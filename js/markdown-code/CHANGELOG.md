@@ -1,4 +1,59 @@
 # @gradio/markdown-code
+
+## 0.10.1
+
+### Features
+
+- [#13770](https://github.com/gradio-app/gradio/pull/13770) [`2cb02c0`](https://github.com/gradio-app/gradio/commit/2cb02c06228a4dfd509a0ac757ed0af466218478) - Upgrade vulnerable frontend dependencies.  Thanks @abidlabs!
+
+### Dependency updates
+
+- @gradio/sanitize@0.4.2
+
+## 0.10.0
+
+### Features
+
+- [#13329](https://github.com/gradio-app/gradio/pull/13329) [`7ac583a`](https://github.com/gradio-app/gradio/commit/7ac583a38a4c995d172033ff6e3700390201ff21) - Make builds go zoom zoom.  Thanks @pngwn!
+
+### Dependency updates
+
+- @gradio/sanitize@0.4.1
+
+## 0.9.0
+
+### Features
+
+- [#13526](https://github.com/gradio-app/gradio/pull/13526) [`53cb4ca`](https://github.com/gradio-app/gradio/commit/53cb4cae1ec3521e9170d12867253516413ba37a) - Run `pnpm lint` and `pnpm ts:check` on CI.  Thanks @abidlabs!
+
+### Fixes
+
+- [#13541](https://github.com/gradio-app/gradio/pull/13541) [`1d19f2b`](https://github.com/gradio-app/gradio/commit/1d19f2b21f6b12285089abc73468ac67b5b93e27) - Fix long unbroken text overflowing in the Markdown component.  Thanks @hysts!
+
+## 0.8.0
+
+### Features
+
+- [#13408](https://github.com/gradio-app/gradio/pull/13408) [`6b0c8af`](https://github.com/gradio-app/gradio/commit/6b0c8aff7a9688ad605e4ca52a083c5754fe1610) - Markdown link fix.  Thanks @dawoodkhan82!
+
+### Dependency updates
+
+- @gradio/sanitize@0.4.0
+
+## 0.7.0
+
+### Features
+
+- [#13176](https://github.com/gradio-app/gradio/pull/13176) [`45c4ecd`](https://github.com/gradio-app/gradio/commit/45c4ecd25fc83c7ee0210d216df1bc4bd509e622) - Add `@gr.cache()` decorator for caching deterministic functions, as as well as a lower-level `gr.Cache` that uses dependency injection.  Thanks @abidlabs!
+
+## 0.6.1
+
+### Fixes
+
+- [#12800](https://github.com/gradio-app/gradio/pull/12800) [`7a1c321`](https://github.com/gradio-app/gradio/commit/7a1c321b6546ba05a353488f5133e8262c4a8a39) - Bump svelte/kit for security reasons.  Thanks @freddyaboulton!
+- [#12771](https://github.com/gradio-app/gradio/pull/12771) [`404f6a5`](https://github.com/gradio-app/gradio/commit/404f6a55be4cd0c1ece4af6edb8a7769473fb650) - Migrate Markdown components to svelte 5.  Thanks @freddyaboulton!
+- [#12777](https://github.com/gradio-app/gradio/pull/12777) [`65f94fb`](https://github.com/gradio-app/gradio/commit/65f94fbff75dffe5399c9663745106e959866a3f) - Fix markdown migration.  Thanks @aliabid94!
+
 ## 0.6.0
 
 ### Features

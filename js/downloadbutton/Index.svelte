@@ -1,4 +1,4 @@
-<script context="module" lang="ts">
+<script module lang="ts">
 	export { default as BaseButton } from "./shared/DownloadButton.svelte";
 </script>
 
@@ -9,6 +9,7 @@
 
 	const props = $props();
 	const gradio = new Gradio<DownloadButtonEvents, DownloadButtonProps>(props);
+	gradio.watch_for_change();
 </script>
 
 <DownloadButton

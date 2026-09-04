@@ -5,31 +5,31 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import dataclasses
 import hashlib
-import importlib.resources
 import inspect
 import io
 import json
 import math
 import mimetypes
 import os
-import platform
 import secrets
 import sys
 import time
 import traceback
 import warnings
-from collections.abc import AsyncIterator, Callable, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from pathlib import Path
-from queue import Empty as EmptyQueue
 from typing import (
     TYPE_CHECKING,
+    Annotated,
     Any,
     Literal,
     Union,
     cast,
 )
 
+import anyio
 import fastapi
 import httpx
 import markupsafe
@@ -55,16 +55,21 @@ from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.templating import Jinja2Templates
 from gradio_client import utils as client_utils
 from gradio_client.documentation import document
+from gradio_client.snippet import generate_code_snippets
 from gradio_client.utils import ServerMessage
+from hf_gradio.cli import _condense_info, generate_cli_snippet
+from huggingface_hub import HfApi
 from jinja2.exceptions import TemplateNotFound
 from python_multipart.multipart import parse_options_header
 from starlette.background import BackgroundTask
 from starlette.datastructures import UploadFile as StarletteUploadFile
+from starlette.formparsers import MultiPartException
 from starlette.responses import RedirectResponse
 
 import gradio
 from gradio import (
-    ranged_response,
+    caching,
+    history,
     route_utils,
     themes,
     utils,
@@ -95,18 +100,29 @@ from gradio.node_server import (
 from gradio.oauth import attach_oauth
 from gradio.route_utils import (  # noqa: F401
     API_PREFIX,
+    BUILD_PATH_LIB,
+    DEFAULT_TEMP_DIR,
+    STATIC_PATH_LIB,
+    STATIC_TEMPLATE_LIB,
+    VERSION,
+    XSS_SAFE_MIMETYPES,
     CustomCORSMiddleware,
     FileUploadProgress,
     FileUploadProgressNotQueuedError,
     FileUploadProgressNotTrackedError,
     GradioMultiPartParser,
     GradioUploadFile,
-    MultiPartException,
-    NodeProxyCache,
     Request,
     compare_passwords_securely,
     create_lifespan_handler,
+    favicon,
+    file_fetch,
+    file_response,
     move_uploaded_files_to_cache,
+    register_media_mimetypes,
+    routes_safe_join,
+    secure_url_stream_response,
+    upload_fn,
 )
 from gradio.screen_recording_utils import process_video_with_ffmpeg
 from gradio.server_messages import (
@@ -123,8 +139,8 @@ from gradio.themes import ThemeClass as Theme
 from gradio.utils import (
     cancel_tasks,
     get_node_path,
-    get_package_version,
     get_upload_folder,
+    safe_aclose_iterator,
 )
 
 if TYPE_CHECKING:
@@ -136,42 +152,7 @@ import shutil
 import tempfile
 
 mimetypes.init()
-
-STATIC_TEMPLATE_LIB = cast(
-    DeveloperPath,
-    importlib.resources.files("gradio").joinpath("templates").as_posix(),  # type: ignore
-)
-STATIC_PATH_LIB = cast(
-    DeveloperPath,
-    importlib.resources.files("gradio")
-    .joinpath("templates/frontend/static")
-    .as_posix(),  # type: ignore
-)
-BUILD_PATH_LIB = cast(
-    DeveloperPath,
-    importlib.resources.files("gradio")
-    .joinpath("templates/frontend/assets")
-    .as_posix(),  # type: ignore
-)
-VERSION = get_package_version()
-XSS_SAFE_MIMETYPES = {
-    "image/jpeg",
-    "image/png",
-    "image/gif",
-    "image/webp",
-    "audio/mpeg",
-    "audio/wav",
-    "audio/ogg",
-    "video/mp4",
-    "video/webm",
-    "video/ogg",
-    "text/plain",
-    "application/json",
-}
-
-DEFAULT_TEMP_DIR = os.environ.get("GRADIO_TEMP_DIR") or str(
-    Path(tempfile.gettempdir()) / "gradio"
-)
+register_media_mimetypes()
 
 BUILT_IN_THEMES: dict[str, Theme] = {
     t.name: t  # type: ignore
@@ -184,6 +165,7 @@ BUILT_IN_THEMES: dict[str, Theme] = {
         themes.Origin(),
         themes.Citrus(),
         themes.Ocean(),
+        themes.Mario(),
     ]
     if t.name is not None
 }
@@ -227,13 +209,18 @@ def toorjson(value):
 templates = Jinja2Templates(directory=STATIC_TEMPLATE_LIB)
 templates.env.filters["toorjson"] = toorjson
 
-client = httpx.AsyncClient(
+# Shared transport keeps the connection pool warm without sharing an
+# `httpx.AsyncClient` (and therefore a cookie jar) across `/proxy=` requests.
+# A single shared `AsyncClient` would persist `Set-Cookie` headers from one
+# proxied response and replay them on subsequent requests to any sibling
+# `*.hf.space` URL — see GHSA-2mr9-9r47-px2g.
+_proxy_transport = httpx.AsyncHTTPTransport(
     limits=httpx.Limits(
         max_connections=100,
         max_keepalive_connections=20,
     ),
-    timeout=httpx.Timeout(10.0),
 )
+
 
 file_upload_statuses = FileUploadProgress()
 
@@ -247,7 +234,8 @@ class App(FastAPI):
 
     def __init__(
         self,
-        auth_dependency: Callable[[fastapi.Request], str | None] | None = None,
+        auth_dependency: Callable[[fastapi.Request], str | None | Awaitable[str | None]]
+        | None = None,
         **kwargs,
     ):
         self.tokens = {}
@@ -270,7 +258,11 @@ class App(FastAPI):
         self._asyncio_tasks: list[asyncio.Task] = []
         self.auth_dependency = auth_dependency
         self.api_info = None
+        self.static_worker_pool = None  # Set by launch() when num_workers > 0
         self.all_app_info = None
+        self._static_prefixes: tuple[
+            str, ...
+        ] = ()  # Populated by enable_static_workers
 
         # Allow user to manually set `docs_url` and `redoc_url`
         # when instantiating an App; when they're not set, disable docs and redoc.
@@ -278,63 +270,6 @@ class App(FastAPI):
         kwargs.setdefault("redoc_url", None)
         self.custom_component_hashes: dict[str, str] = {}
         super().__init__(**kwargs)
-
-    # Create a single client to be reused across requests
-    # We're not overriding any defaults here
-
-    client = httpx.AsyncClient()
-    proxy_cache = NodeProxyCache(client)
-
-    @staticmethod
-    async def proxy_to_node(
-        request: fastapi.Request,
-        app: App,
-        server_name: str,
-        node_port: int,
-        python_port: int,
-        scheme: str = "http",
-        mounted_path: str = "",
-    ) -> Response:
-        full_path = request.url.path
-        if mounted_path:
-            full_path = full_path.replace(mounted_path, "")
-        if request.url.query:
-            full_path += f"?{request.url.query}"
-
-        root_path = route_utils.get_root_url(
-            request=request,
-            route_path=request.url.path,
-            root_path=app.root_path,
-        )
-
-        url = f"{scheme}://{server_name}:{node_port}{full_path}"
-
-        server_url = f"{scheme}://{server_name}"
-        if python_port:
-            server_url += f":{python_port}"
-        if mounted_path:
-            server_url += mounted_path
-
-        headers = {}  # Do not include arbitrary headers from original request so NodeProxyCache can be effective
-        headers["x-gradio-server"] = server_url
-        headers["x-gradio-port"] = str(python_port)
-        headers["x-gradio-mounted-path"] = mounted_path
-        headers["x-gradio-original-url"] = str(root_path)
-
-        if os.getenv("GRADIO_LOCAL_DEV_MODE"):
-            headers["x-gradio-local-dev-mode"] = "1"
-
-        if (accept_language := request.headers.get("accept-language")) is not None:
-            headers["accept-language"] = accept_language
-
-        proxy_req = App.proxy_cache.ProxyReq(request.method, url, headers)
-        status, response_headers, aiter_raw = await App.proxy_cache.get(proxy_req)
-
-        return StreamingResponse(
-            aiter_raw,
-            status_code=status,
-            headers=response_headers,
-        )
 
     def configure_app(self, blocks: gradio.Blocks) -> None:
         auth = blocks.auth
@@ -349,7 +284,9 @@ class App(FastAPI):
         self.cwd = os.getcwd()
         self.favicon_path = blocks.favicon_path
         self.tokens = {}
-        self.root_path = blocks.root_path or ""
+        self.root_path = blocks.root_path or (
+            "" if blocks.custom_mount_path is not None else self.root_path
+        )
         self.state_holder.set_blocks(blocks)
 
     def get_blocks(self) -> gradio.Blocks:
@@ -358,7 +295,7 @@ class App(FastAPI):
         return self.blocks
 
     def build_proxy_request(self, url_path):
-        url = httpx.URL(url_path)
+        url = httpx.URL(route_utils.requote_proxied_url(url_path))
         assert self.blocks  # noqa: S101
         # Don't proxy a URL unless it's a URL specifically loaded by the user using
         # gr.load() to prevent SSRF or harvesting of HF tokens by malicious Spaces.
@@ -367,12 +304,17 @@ class App(FastAPI):
         )
         if not is_safe_url:
             raise PermissionError("This URL cannot be proxied.")
-        is_hf_url = url.host.endswith(".hf.space")
+        # Only allow proxying to Hugging Face Space URLs to prevent SSRF
+        # via malicious proxy_url values in untrusted configs.
+        if not url.host.endswith(".hf.space"):
+            raise PermissionError("This URL cannot be proxied.")
         headers = {}
-        if Context.token is not None and is_hf_url:
+        if Context.token is not None:
             headers["Authorization"] = f"Bearer {Context.token}"
-        rp_req = client.build_request("GET", url, headers=headers)
-        return rp_req
+        # Build a plain request rather than `client.build_request` so that
+        # the proxy does not share an `httpx.AsyncClient` (or cookie jar)
+        # across calls (see GHSA-2mr9-9r47-px2g).
+        return url, headers
 
     def _cancel_asyncio_tasks(self):
         for task in self._asyncio_tasks:
@@ -426,78 +368,60 @@ class App(FastAPI):
     @staticmethod
     def create_app(
         blocks: gradio.Blocks,
+        app: App | None = None,
         app_kwargs: dict[str, Any] | None = None,
-        auth_dependency: Callable[[fastapi.Request], str | None] | None = None,
+        auth_dependency: Callable[[fastapi.Request], str | None | Awaitable[str | None]]
+        | None = None,
         strict_cors: bool = True,
-        ssr_mode: bool = False,
         mcp_server: bool | None = None,
+        debug: bool = False,
+        parent_app: fastapi.FastAPI | None = None,
     ) -> App:
         app_kwargs = app_kwargs or {}
         app_kwargs.setdefault("default_response_class", ORJSONResponse)
         mcp_subpath = App.setup_mcp_server(blocks, app_kwargs, mcp_server)
 
         delete_cache = blocks.delete_cache or (None, None)
-        app_kwargs["lifespan"] = create_lifespan_handler(
-            app_kwargs.get("lifespan", None), *delete_cache
-        )
-        app = App(auth_dependency=auth_dependency, **app_kwargs, debug=True)
+        if app is None:
+            app_kwargs["lifespan"] = create_lifespan_handler(
+                app_kwargs.get("lifespan", None), *delete_cache
+            )
+            app = App(auth_dependency=auth_dependency, **app_kwargs, debug=debug)
+        else:
+            app.router.lifespan_context = create_lifespan_handler(
+                app_kwargs.get("lifespan", None), *delete_cache
+            )
+            if auth_dependency is not None:
+                app.auth_dependency = auth_dependency
         if blocks.mcp_server_obj:
             blocks.mcp_server_obj.launch_mcp_on_sse(app, mcp_subpath, blocks.root_path)
         router = APIRouter(prefix=API_PREFIX)
 
         app.configure_app(blocks)
 
-        app.add_middleware(CustomCORSMiddleware, strict_cors=strict_cors)  # type: ignore
+        app.add_middleware(
+            CustomCORSMiddleware,  # type: ignore
+            strict_cors=strict_cors,
+            parent_app=parent_app,
+        )
         app.add_middleware(
             BrotliMiddleware,  # type: ignore
             quality=4,
             excluded_handlers=[mcp_subpath],
         )
 
-        if ssr_mode:
-
-            @app.middleware("http")
-            async def conditional_routing_middleware(
-                request: fastapi.Request, call_next
-            ):
-                blocks = app.get_blocks()
-                custom_mount_path = blocks.custom_mount_path
-                path = (
-                    request.url.path.replace(blocks.custom_mount_path or "", "")
-                    if custom_mount_path is not None
-                    else request.url.path
-                )
-
-                if (
-                    getattr(blocks, "node_process", None) is not None
-                    and blocks.node_port is not None
-                    and not any(path.startswith(f"/{url}") for url in INTERNAL_ROUTES)
-                ):
-                    if App.app_port is None:
-                        App.app_port = request.url.port or int(
-                            os.getenv("GRADIO_SERVER_PORT", "7860")
-                        )
-
-                    try:
-                        return await App.proxy_to_node(
-                            request,
-                            app,
-                            blocks.node_server_name or "0.0.0.0",
-                            blocks.node_port,
-                            App.app_port,
-                            request.url.scheme,
-                            custom_mount_path or "",
-                        )
-                    except Exception as e:
-                        print(e)
-                response = await call_next(request)
-                return response
+        # Note: In the current architecture, Node is the front proxy and
+        # routes requests to Python. The old conditional_routing_middleware
+        # that proxied Python -> Node is no longer needed.
 
         @router.get("/user")
         @router.get("/user/")
-        def get_current_user(request: fastapi.Request) -> str | None:
+        async def get_current_user(request: fastapi.Request) -> str | None:
             if app.auth_dependency is not None:
-                return app.auth_dependency(request)
+                user = app.auth_dependency(request)
+                if inspect.isawaitable(user):
+                    user = await user
+                return user
             token = request.cookies.get(
                 f"access-token-{app.cookie_id}"
             ) or request.cookies.get(f"access-token-unsecure-{app.cookie_id}")
@@ -553,7 +477,7 @@ class App(FastAPI):
                     await asyncio.sleep(check_rate)
                     if time.perf_counter() - last_heartbeat > heartbeat_rate:
                         yield """event: heartbeat\ndata: {}\n\n"""
-                        last_heartbeat = time.time()
+                        last_heartbeat = time.perf_counter()
 
             return StreamingResponse(
                 reload_checker(request),
@@ -646,13 +570,9 @@ class App(FastAPI):
         ###############
 
         @app.get("/svelte/{path:path}")
-        def _(path: str):
-            svelte_path = Path(BUILD_PATH_LIB) / "svelte"
-            return FileResponse(
-                routes_safe_join(
-                    DeveloperPath(str(svelte_path)), UserProvidedPath(path)
-                )
-            )
+        async def _(path: str):
+            svelte_path = DeveloperPath(str(Path(BUILD_PATH_LIB) / "svelte"))
+            return file_response(svelte_path, UserProvidedPath(path))
 
         def attach_page(page):
             @app.get(f"/{page}", response_class=HTMLResponse)
@@ -679,13 +599,13 @@ class App(FastAPI):
         ):
             components = config["components"]
             try:
-                path = (
-                    Path(app.uploaded_file_dir)
-                    / "deep_links"
-                    / deep_link
-                    / "state.json"
+                user_path = Path("deep_links") / deep_link / "state.json"
+                path = Path(
+                    routes_safe_join(
+                        DeveloperPath(app.uploaded_file_dir),
+                        UserProvidedPath(str(user_path)),
+                    )
                 )
-
                 if path.exists():
                     components = orjson.loads(path.read_bytes())
                     deep_link_state = "valid"
@@ -712,10 +632,13 @@ class App(FastAPI):
         ):
             mimetypes.add_type("application/javascript", ".js")
             blocks = app.get_blocks()
+            is_run_history = request.url.path.rstrip("/").endswith(f"{API_PREFIX}/runs")
             root = route_utils.get_root_url(
                 request=request,
-                route_path=f"/{page}",
-                root_path=app.root_path or blocks.custom_mount_path,
+                route_path=f"{API_PREFIX}/runs" if is_run_history else f"/{page}",
+                root_path=app.root_path
+                or request.scope.get("root_path")
+                or blocks.custom_mount_path,
             )
             if (app.auth is None and app.auth_dependency is None) or user is not None:
                 config = utils.safe_deepcopy(blocks.config)
@@ -774,6 +697,11 @@ class App(FastAPI):
                     request=request,
                     name=template,
                     context={
+                        "base_url": (
+                            "../../" if request.url.path.endswith("/") else "../"
+                        )
+                        if is_run_history
+                        else "./",
                         "config": config,
                         "gradio_api_info": gradio_api_info,
                     },
@@ -790,6 +718,83 @@ class App(FastAPI):
                         "Did you install Gradio from source files? You need to build "
                         "the frontend by running /scripts/build_frontend.sh"
                     ) from err
+
+        @router.get("/runs", response_class=HTMLResponse)
+        @router.get("/runs/", response_class=HTMLResponse)
+        def run_history(
+            request: fastapi.Request,
+            user: str = Depends(get_current_user),
+        ):
+            if not getattr(app.get_blocks(), "run_history", True):
+                raise HTTPException(status_code=404, detail="Not found")
+            return main(request, user)
+
+        if getattr(blocks, "run_history", True):
+            history.init_history_state(app)
+
+            @router.post("/run-history/connect")
+            async def connect_history(
+                request: fastapi.Request,
+                body: history.ConnectBody,
+                token: history.TokenDep,
+            ):
+                """Create the bucket if needed and confirm it is writable."""
+                blocks = request.app.get_blocks()
+                try:
+                    target = history.HistoryTarget.build(
+                        body.bucket_id, token, history.app_id_of(blocks)
+                    )
+                except ValueError as exc:
+                    raise HTTPException(422, "invalid bucket id") from exc
+                await history.offload(history.ensure_bucket, target)
+                return {"ok": True}
+
+            @router.get("/run-history/buckets")
+            async def list_history_buckets(token: history.TokenDep):
+                """The buckets the signed-in user can write to."""
+
+                def _list():
+                    return [b.id for b in HfApi(token=token).list_buckets(token=token)]
+
+                try:
+                    return {"buckets": await anyio.to_thread.run_sync(_list)}
+                except Exception as exc:
+                    raise HTTPException(502, "hub error") from exc
+
+            @router.get("/run-history/records")
+            async def list_history_records(
+                target: history.TargetDep,
+                limit: Annotated[
+                    int, fastapi.Query(ge=1, le=history.MAX_RECORDS_PER_PAGE)
+                ] = 50,
+            ):
+                """The newest runs for this app, newest first."""
+                records = await history.offload(history.list_records, target, limit)
+                return {"records": [dataclasses.asdict(r) for r in records]}
+
+            @router.get("/run-history/records/{endpoint}/{record_id}/assets/{asset_id}")
+            async def get_history_asset(
+                target: history.TargetDep,
+                endpoint: history.Segment,
+                record_id: history.RecordId,
+                asset_id: history.Segment,
+            ):
+                """Proxy one stored asset, which the browser cannot fetch itself."""
+                data, guessed = await history.offload(
+                    history.get_asset_bytes, target, endpoint, record_id, asset_id
+                )
+                if guessed in route_utils.XSS_SAFE_MIMETYPES:
+                    content_type, disposition = guessed, "inline"
+                else:
+                    content_type, disposition = "application/octet-stream", "attachment"
+                return Response(
+                    content=data,
+                    media_type=content_type,
+                    headers={
+                        "Content-Disposition": disposition,
+                        "Cache-Control": "private, max-age=31536000, immutable",
+                    },
+                )
 
         @app.get("/gradio_api/deep_link")
         def deep_link(session_hash: str):
@@ -824,6 +829,25 @@ class App(FastAPI):
                 api_info = utils.safe_deepcopy(app.get_blocks().get_api_info())
                 api_info = cast(dict[str, Any], api_info)
                 api_info = route_utils.update_example_values_to_use_public_url(api_info)
+                root = route_utils.get_root_url(
+                    request=request,
+                    route_path=f"{API_PREFIX}/info",
+                    root_path=app.root_path,
+                )
+                space_id = app.get_blocks().space_id
+                cli_snippets = generate_cli_snippet(api_info["named_endpoints"])
+                for k, v in cli_snippets.items():
+                    cli_snippets[k] = v.replace("{space_id}", space_id or str(root))
+                api_prefix = API_PREFIX + "/"
+                for ep_name, ep_info in api_info.get("named_endpoints", {}).items():
+                    ep_info["code_snippets"] = generate_code_snippets(
+                        ep_name,
+                        ep_info,
+                        str(root),
+                        space_id=space_id,
+                        api_prefix=api_prefix,
+                    )
+                    ep_info["code_snippets"]["cli"] = cli_snippets[ep_name]
                 app.api_info = api_info
             return app.api_info
 
@@ -831,6 +855,7 @@ class App(FastAPI):
         def openapi_schema(request: fastapi.Request):
             """Generate an OpenAPI schema from the Gradio app's API info."""
             info = api_info(request)
+            info_simple = _condense_info(info, url_only=True)
             schema = {
                 "openapi": "3.0.2",
                 "info": {
@@ -838,26 +863,101 @@ class App(FastAPI):
                     "description": getattr(app.get_blocks(), "description", ""),
                     "version": VERSION,
                 },
-                "paths": {},
+                "paths": {
+                    "/gradio_api/upload": {
+                        "post": {
+                            "summary": "Upload File",
+                            "operationId": "upload_file_upload_post",
+                            "parameters": [
+                                {
+                                    "name": "upload_id",
+                                    "in": "query",
+                                    "required": False,
+                                    "schema": {
+                                        "type": "string",
+                                        "nullable": True,
+                                        "default": None,
+                                    },
+                                    "description": "Optional ID to track upload progress",
+                                }
+                            ],
+                            "requestBody": {
+                                "required": True,
+                                "content": {
+                                    "multipart/form-data": {
+                                        "schema": {
+                                            "type": "object",
+                                            "properties": {
+                                                "files": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "type": "string",
+                                                        "format": "binary",
+                                                    },
+                                                    "description": "One or more files to upload",
+                                                }
+                                            },
+                                            "required": ["files"],
+                                        }
+                                    }
+                                },
+                            },
+                            "responses": {
+                                "200": {
+                                    "description": "List of file paths where the uploaded files were saved",
+                                    "content": {
+                                        "application/json": {
+                                            "schema": {
+                                                "type": "array",
+                                                "items": {"type": "string"},
+                                            }
+                                        }
+                                    },
+                                },
+                                "400": {
+                                    "description": "Invalid content type or invalid file name",
+                                    "content": {
+                                        "text/plain": {"schema": {"type": "string"}}
+                                    },
+                                },
+                                "413": {
+                                    "description": "File exceeds maximum allowed size",
+                                    "content": {
+                                        "text/plain": {"schema": {"type": "string"}}
+                                    },
+                                },
+                            },
+                            "security": [{"login_check": []}],
+                        }
+                    }
+                },
                 "components": {"schemas": {}},
             }
 
             for endpoint_path, endpoint_info in info.get("named_endpoints", {}).items():  # type: ignore
                 if endpoint_info.get("api_visibility", "public") == "private":
                     continue
+                endpoint_name = endpoint_path.strip("/").replace("/", "_")
+                has_file_params = any(
+                    p.get("type", {}).get("type") == "filepath"
+                    for p in info_simple[endpoint_path].get("parameters", [])
+                )
+                summary = (
+                    endpoint_info.get("description", "") or f"Endpoint {endpoint_path}"
+                )
+                if has_file_params:
+                    summary += '. File inputs must first be uploaded via POST /gradio_api/upload (multipart/form-data with a "files" field). Use the returned path in the request body as {"path": "<uploaded_path>", "meta": {"_type": "gradio.FileData"}}.'
                 path_item = {
                     "post": {
-                        "summary": endpoint_info.get(
-                            "description", f"Endpoint {endpoint_path}"
-                        ),
+                        "summary": summary,
                         "description": endpoint_info.get("description", ""),
-                        "operationId": endpoint_path.strip("/").replace("/", "_"),
+                        "operationId": endpoint_name,
                         "requestBody": {
                             "required": True,
                             "content": {
                                 "application/json": {
                                     "schema": {"type": "object", "properties": {}}
-                                }
+                                },
                             },
                         },
                         "responses": {
@@ -865,7 +965,12 @@ class App(FastAPI):
                                 "description": "Successful response",
                                 "content": {
                                     "application/json": {
-                                        "schema": {"type": "object", "properties": {}}
+                                        "schema": {
+                                            "type": "object",
+                                            "properties": {
+                                                "event_id": {"type": "string"}
+                                            },
+                                        }
                                     }
                                 },
                             }
@@ -876,8 +981,8 @@ class App(FastAPI):
                 request_properties = path_item["post"]["requestBody"]["content"][  # type: ignore
                     "application/json"
                 ]["schema"]["properties"]  # type: ignore
-                for param in endpoint_info.get("parameters", []):
-                    param_name = param["parameter_name"]
+                for param in info_simple[endpoint_path].get("parameters", []):
+                    param_name = param["name"]
                     param_type = param.get("type", {})
 
                     if "additional_description" in param_type:
@@ -887,6 +992,11 @@ class App(FastAPI):
                     if "properties" in param_type and "type" not in param_type:
                         param_type = dict(param_type)
                         param_type["type"] = "object"
+
+                    if param_type.get("type") == "filepath":
+                        param_type = dict(param_type)
+                        param_type["type"] = "string"
+                        param_type["format"] = "filepath"
 
                     request_properties[param_name] = param_type  # type: ignore
 
@@ -904,37 +1014,64 @@ class App(FastAPI):
                             "examples"
                         ]["example1"]["value"][param_name] = param["example_input"]  # type: ignore
 
-                response_properties = path_item["post"]["responses"]["200"]["content"][  # type: ignore
-                    "application/json"
-                ]["schema"]["properties"]  # type: ignore
-                for i, ret in enumerate(endpoint_info.get("returns", [])):
+                returns_info = []
+                for i, ret in enumerate(info_simple[endpoint_path].get("returns", [])):
                     ret_name = f"output_{i}" if i > 0 else "output"
                     ret_type = ret.get("type", {})
+                    desc = ""
+                    returns_info.append(
+                        f"{ret_name} ({ret_type})" + "" if not desc else f"desc: {desc}"
+                    )  # type: ignore
+                path_item["post"]["description"] += (  # type: ignore
+                    f"Output must be fetched from GET /gradio_api/call{endpoint_path}/{{event_id}}. Returns an array of {len(returns_info)} elements of the following format: {returns_info}"
+                )
 
-                    if "additional_description" in ret_type:
-                        ret_type = dict(ret_type)
-                        ret_type.pop("additional_description", None)
+                schema["paths"][f"/gradio_api/call/v2{endpoint_path}"] = path_item  # type: ignore
 
-                    if "properties" in ret_type and "type" not in ret_type:
-                        ret_type = dict(ret_type)
-                        ret_type["type"] = "object"
-
-                    response_properties[ret_name] = ret_type  # type: ignore
-
-                schema["paths"][f"/run{endpoint_path}"] = path_item  # type: ignore
+                get_path = f"/gradio_api/call{endpoint_path}/{{event_id}}"
+                schema["paths"][get_path] = {  # type: ignore
+                    "get": {
+                        "summary": f"Fetch results for {endpoint_path}",
+                        "description": "Returns a stream of server-sent events (SSE). The final event has `event: complete` with `data` containing a JSON array of outputs.",
+                        "operationId": f"{endpoint_name}_get",
+                        "parameters": [
+                            {
+                                "name": "event_id",
+                                "in": "path",
+                                "required": True,
+                                "schema": {"type": "string"},
+                                "description": "The event_id returned by the POST request",
+                            }
+                        ],
+                        "responses": {
+                            "200": {
+                                "description": "SSE stream with event: complete containing a JSON array of outputs",
+                                "content": {
+                                    "text/event-stream": {"schema": {"type": "string"}}
+                                },
+                            }
+                        },
+                    }
+                }
 
             return schema
 
         @app.get("/config/", dependencies=[Depends(login_check)])
         @app.get("/config", dependencies=[Depends(login_check)])
-        def get_config(request: fastapi.Request, deep_link: str = ""):
+        def get_config(
+            request: fastapi.Request,
+            user: str = Depends(get_current_user),
+            deep_link: str = "",
+        ):
             config = utils.safe_deepcopy(app.get_blocks().config)
             root = route_utils.get_root_url(
                 request=request,
                 route_path="/config",
-                root_path=app.root_path or blocks.custom_mount_path,
+                root_path=app.root_path
+                or request.scope.get("root_path")
+                or blocks.custom_mount_path,
             )
-            config["username"] = get_current_user(request)
+            config["username"] = user
             if deep_link:
                 components, deep_link_state = load_deep_link(deep_link, config, page="")  # type: ignore
                 config["components"] = components  # type: ignore
@@ -947,9 +1084,8 @@ class App(FastAPI):
             return ORJSONResponse(content=config)
 
         @app.get("/static/{path:path}")
-        def static_resource(path: str):
-            static_file = routes_safe_join(STATIC_PATH_LIB, UserProvidedPath(path))
-            return FileResponse(static_file)
+        async def static_resource(path: str):
+            return file_response(STATIC_PATH_LIB, UserProvidedPath(path))
 
         @router.get("/custom_component/{id}/{environment}/{type}/{file_name}")
         def custom_component_path(
@@ -959,6 +1095,9 @@ class App(FastAPI):
             file_name: str,
             req: fastapi.Request,
         ):
+            print(
+                f"id={id}, environment={environment}, type={type}, file_name={file_name}"
+            )
             if environment not in ["client", "server"]:
                 raise HTTPException(
                     status_code=404, detail="Environment not supported."
@@ -1014,27 +1153,30 @@ class App(FastAPI):
             return FileResponse(path, headers=headers)
 
         @app.get("/assets/{path:path}")
-        def build_resource(path: str):
-            build_file = routes_safe_join(BUILD_PATH_LIB, UserProvidedPath(path))
-            return FileResponse(build_file)
+        async def build_resource(path: str):
+            return file_response(BUILD_PATH_LIB, UserProvidedPath(path))
 
         @app.get("/favicon.ico")
-        async def favicon():
-            blocks = app.get_blocks()
-            if blocks.favicon_path is None:
-                return static_resource("img/logo.svg")
-            else:
-                return FileResponse(blocks.favicon_path)
+        async def _():
+            favicon_path = app.get_blocks().favicon_path
+            return favicon(favicon_path)
 
         @router.head("/proxy={url_path:path}", dependencies=[Depends(login_check)])
         @router.get("/proxy={url_path:path}", dependencies=[Depends(login_check)])
         async def reverse_proxy(url_path: str):
             # Adapted from: https://github.com/tiangolo/fastapi/issues/1788
             try:
-                rp_req = app.build_proxy_request(url_path)
+                proxy_client = httpx.AsyncClient(
+                    transport=_proxy_transport,
+                    timeout=httpx.Timeout(10.0),
+                )
+                url, headers = app.build_proxy_request(url_path)
+                rp_req = proxy_client.build_request("GET", url, headers=headers)
             except PermissionError as err:
                 raise HTTPException(status_code=400, detail=str(err)) from err
-            rp_resp = await client.send(rp_req, stream=True)
+
+            rp_resp = await proxy_client.send(rp_req, stream=True)
+
             mime_type, _ = mimetypes.guess_type(url_path)
             if mime_type not in XSS_SAFE_MIMETYPES:
                 rp_resp.headers.update({"Content-Disposition": "attachment"})
@@ -1049,72 +1191,16 @@ class App(FastAPI):
         @router.head("/file={path_or_url:path}", dependencies=[Depends(login_check)])
         @router.get("/file={path_or_url:path}", dependencies=[Depends(login_check)])
         async def file(path_or_url: str, request: fastapi.Request):
-            blocks = app.get_blocks()
             if client_utils.is_http_url_like(path_or_url):
-                return RedirectResponse(
-                    url=path_or_url, status_code=status.HTTP_302_FOUND
-                )
-
-            if route_utils.starts_with_protocol(path_or_url):
-                raise HTTPException(403, f"File not allowed: {path_or_url}.")
-
-            abs_path = utils.abspath(path_or_url)
-            # Catch potential permission errors to not display the full traceback
-            # see https://github.com/gradio-app/gradio/issues/11194
-            try:
-                if abs_path.is_dir() or not abs_path.exists():
-                    raise HTTPException(403, f"File not allowed: {path_or_url}.")
-            except Exception as e:
-                raise HTTPException(403, f"File not allowed: {path_or_url}.") from e
-
-            from gradio.data_classes import _StaticFiles
-
-            allowed, reason = utils.is_allowed_file(
-                abs_path,
-                blocked_paths=blocks.blocked_paths,
-                allowed_paths=blocks.allowed_paths + _StaticFiles.all_paths,
-                created_paths=[app.uploaded_file_dir, utils.get_cache_folder()],
-            )
-            if not allowed:
-                raise HTTPException(403, f"File not allowed: {path_or_url}.")
-
-            mime_type, _ = mimetypes.guess_type(abs_path)
-            if mime_type in XSS_SAFE_MIMETYPES or reason == "allowed":
-                media_type = mime_type or "application/octet-stream"
-                content_disposition_type = "inline"
-            else:
-                media_type = "application/octet-stream"
-                content_disposition_type = "attachment"
-
-            range_val = request.headers.get("Range", "").strip()
-            if range_val.startswith("bytes=") and "-" in range_val:
-                range_val = range_val[6:]
-                start, end = range_val.split("-")
-                if start.isnumeric() and end.isnumeric():
-                    start = int(start)
-                    end = int(end)
-                    headers = dict(request.headers)
-                    headers["Content-Disposition"] = content_disposition_type
-                    headers["Content-Type"] = media_type
-                    response = ranged_response.RangedFileResponse(
-                        abs_path,
-                        ranged_response.OpenRange(start, end),
-                        headers,
-                        stat_result=os.stat(abs_path),
-                    )
-                    return response
-
-            return FileResponse(
-                abs_path,
-                headers={"Accept-Ranges": "bytes"},
-                content_disposition_type=content_disposition_type,
-                media_type=media_type,
-                filename=abs_path.name,
-            )
+                return await secure_url_stream_response(path_or_url, request)
+            blocks = app.get_blocks()
+            return file_fetch(path_or_url, request, blocks, app.uploaded_file_dir)
 
         @router.post("/stream/{event_id}")
         async def _(event_id: str, body: PredictBody, request: fastapi.Request):
-            event = app.get_blocks()._queue.event_ids_to_events[event_id]
+            event = app.get_blocks()._queue.event_ids_to_events.get(event_id)
+            if event is None:
+                return Response(status_code=404)
             body = PredictBodyInternal(**body.model_dump(), request=request)  # type: ignore
             event.data = body
             event.signal.set()
@@ -1122,7 +1208,9 @@ class App(FastAPI):
 
         @router.post("/stream/{event_id}/close")
         async def _(event_id: str):
-            event = app.get_blocks()._queue.event_ids_to_events[event_id]
+            event = app.get_blocks()._queue.event_ids_to_events.get(event_id)
+            if event is None:
+                return Response(status_code=404)
             event.run_time = math.inf
             event.closed = True
             event.signal.set()
@@ -1132,7 +1220,7 @@ class App(FastAPI):
         async def _(session_hash: str, run: int, component_id: int):
             stream: route_utils.MediaStream | None = (
                 app.get_blocks()
-                .pending_streams[session_hash]
+                .pending_streams.get(session_hash, {})
                 .get(run, {})
                 .get(component_id, None)
             )
@@ -1165,7 +1253,7 @@ class App(FastAPI):
                 return Response(status_code=400, content="Unsupported file extension")
             stream: route_utils.MediaStream | None = (
                 app.get_blocks()
-                .pending_streams[session_hash]
+                .pending_streams.get(session_hash, {})
                 .get(run, {})
                 .get(component_id, None)
             )
@@ -1187,7 +1275,7 @@ class App(FastAPI):
         async def _(session_hash: str, run: int, component_id: int):
             stream: route_utils.MediaStream | None = (
                 app.get_blocks()
-                .pending_streams[session_hash]
+                .pending_streams.get(session_hash, {})
                 .get(run, {})
                 .get(component_id, None)
             )
@@ -1229,7 +1317,7 @@ class App(FastAPI):
             """Clients make a persistent connection to this endpoint to keep the session alive.
             When the client disconnects, the session state is deleted.
             """
-            heartbeat_rate = 0.25 if os.getenv("GRADIO_IS_E2E_TEST", None) else 15
+            heartbeat_rate = utils.get_heartbeat_rate()
 
             async def iterator():
                 stop_stream_task = asyncio.create_task(app.stop_event.wait())
@@ -1277,14 +1365,24 @@ class App(FastAPI):
                         # This will mark the state to be deleted in an hour
                         if session_hash in app.state_holder.session_data:
                             app.state_holder.session_data[session_hash].is_closed = True
+                        caching.clear_session_caches(session_hash)
+                        for run in (
+                            app.get_blocks()
+                            .pending_streams.pop(session_hash, {})
+                            .values()
+                        ):
+                            for stream in run.values():
+                                stream.end_stream()
                         for (
                             event_id
                         ) in app.get_blocks()._queue.pending_event_ids_session.get(
                             session_hash, []
                         ):
-                            event = app.get_blocks()._queue.event_ids_to_events[
+                            event = app.get_blocks()._queue.event_ids_to_events.get(
                                 event_id
-                            ]
+                            )
+                            if event is None:
+                                continue
                             event.run_time = math.inf
                             event.signal.set()
                         return
@@ -1320,7 +1418,7 @@ class App(FastAPI):
             )
             root_path = route_utils.get_root_url(
                 request=request,
-                route_path=f"{API_PREFIX}/api/{api_name}",
+                route_path=request.url.path,
                 root_path=app.root_path,
             )
             try:
@@ -1341,6 +1439,51 @@ class App(FastAPI):
                 )
             return ORJSONResponse(output)
 
+        def prepare_simple_api_data(body: PredictBody, fn: Any) -> None:
+            if len(body.data) == len(fn.inputs):
+                return
+            api_inputs = [block for block in fn.inputs if not block.skip_api]
+            if len(body.data) != len(api_inputs):
+                return
+            data = iter(body.data)
+            body.data = [None if block.skip_api else next(data) for block in fn.inputs]
+
+        @router.post("/call/v2/{api_name}", dependencies=[Depends(login_check)])
+        @router.post("/call/v2/{api_name}/", dependencies=[Depends(login_check)])
+        async def _(
+            api_name: str,
+            body: dict[str, Any],
+            request: fastapi.Request,
+            username: str = Depends(get_current_user),
+        ):
+            endpoint_info = app.api_info["named_endpoints"]["/" + api_name]  # type: ignore
+            parameters_info = endpoint_info["parameters"]
+            body = dict(body)
+            oauth_token = None
+            if endpoint_info.get("oauth_token"):
+                oauth_token = body.pop("oauth_token", None)
+            elif not any(
+                p.get("parameter_name") == "oauth_token" for p in parameters_info
+            ):
+                # Not this endpoint's to receive, and not one of its parameters
+                # either, so drop it rather than report an unknown argument.
+                body.pop("oauth_token", None)
+            processed_args = client_utils.construct_args(
+                parameters_info,
+                (),
+                body,
+            )
+            simple_body = SimplePredictBody(
+                data=processed_args, oauth_token=oauth_token
+            )
+            full_body = PredictBody(**simple_body.model_dump(), simple_format=True)  # type: ignore
+            fn = route_utils.get_fn(
+                blocks=app.get_blocks(), api_name=api_name, body=full_body
+            )
+            prepare_simple_api_data(full_body, fn)
+            full_body.fn_index = fn._id
+            return await queue_join_helper(full_body, request, username)
+
         @router.post("/call/{api_name}", dependencies=[Depends(login_check)])
         @router.post("/call/{api_name}/", dependencies=[Depends(login_check)])
         async def simple_predict_post(
@@ -1353,6 +1496,7 @@ class App(FastAPI):
             fn = route_utils.get_fn(
                 blocks=app.get_blocks(), api_name=api_name, body=full_body
             )
+            prepare_simple_api_data(full_body, fn)
             full_body.fn_index = fn._id
             return await queue_join_helper(full_body, request, username)
 
@@ -1390,7 +1534,7 @@ class App(FastAPI):
             )
             error_map = {
                 "queue_full": status.HTTP_503_SERVICE_UNAVAILABLE,
-                "validator_error": status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "validator_error": status.HTTP_422_UNPROCESSABLE_CONTENT,
                 "error": status.HTTP_400_BAD_REQUEST,
                 "success": status.HTTP_200_OK,
             }
@@ -1412,6 +1556,7 @@ class App(FastAPI):
                 body.event_id
                 in blocks._queue.pending_event_ids_session.get(body.session_hash, {})
             )
+            await blocks._queue.remove_from_queue(body.event_id)
             if session_open and event_running:
                 message = ProcessCompletedMessage(
                     output={}, success=True, event_id=body.event_id
@@ -1421,10 +1566,17 @@ class App(FastAPI):
                 ].put_nowait(message)
             if body.event_id in app.iterators:
                 async with app.lock:
+                    try:
+                        await safe_aclose_iterator(app.iterators[body.event_id])
+                    except Exception:
+                        pass
                     del app.iterators[body.event_id]
                     app.iterators_to_reset.add(body.event_id)
             return {"success": True}
 
+        @router.get(
+            "/call/v2/{api_name}/{event_id}", dependencies=[Depends(login_check)]
+        )
         @router.get("/call/{api_name}/{event_id}", dependencies=[Depends(login_check)])
         async def simple_predict_get(
             request: fastapi.Request,
@@ -1434,10 +1586,14 @@ class App(FastAPI):
                 msg = message.model_dump()
                 if isinstance(message, ProcessCompletedMessage):
                     event = "complete" if message.success else "error"
-                    data = msg["output"].get("data")
+                    data = (
+                        msg["output"].get("data") if message.success else msg["output"]
+                    )
                 elif isinstance(message, ProcessGeneratingMessage):
                     event = "generating" if message.success else "error"
-                    data = msg["output"].get("data")
+                    data = (
+                        msg["output"].get("data") if message.success else msg["output"]
+                    )
                 elif isinstance(message, HeartbeatMessage):
                     event = "heartbeat"
                     data = None
@@ -1448,7 +1604,26 @@ class App(FastAPI):
                     return None
                 return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
-            return await queue_data_helper(request, event_id, process_msg)
+            queue = app.get_blocks()._queue
+            event = queue.event_ids_to_events.get(event_id)
+            if event is not None:
+                session_hash = event.session_hash
+            else:
+                # A finished event is no longer held, but this route is normally
+                # called after it finishes. `pending_event_ids_session` keeps the
+                # id until the completion message is delivered, which is exactly
+                # this window. Falling back to the event id only works for a
+                # caller who sent no session hash of their own, since `Event`
+                # defaults `session_hash` to its own id.
+                session_hash = next(
+                    (
+                        s
+                        for s, ids in queue.pending_event_ids_session.items()
+                        if event_id in ids
+                    ),
+                    event_id,
+                )
+            return await queue_data_helper(request, session_hash, process_msg)
 
         @router.get("/queue/data", dependencies=[Depends(login_check)])
         async def queue_data(
@@ -1466,13 +1641,24 @@ class App(FastAPI):
             process_msg: Callable[[EventMessage], str | None],
         ):
             blocks = app.get_blocks()
+            heartbeat_rate = utils.get_heartbeat_rate()
+
+            async def heartbeat():
+                while blocks.is_running:
+                    await asyncio.sleep(heartbeat_rate)
+                    # It's possible the event has finished by the time
+                    # the heartbeat wakes up
+                    queue = blocks._queue.pending_messages_per_session.get(session_hash)
+                    if queue:
+                        await queue.put(HeartbeatMessage())
 
             async def sse_stream(request: fastapi.Request):
+                heartbeat_task = asyncio.create_task(heartbeat())
                 try:
-                    last_heartbeat = time.perf_counter()
                     while True:
                         if await request.is_disconnected():
                             await blocks._queue.clean_events(session_hash=session_hash)
+                            heartbeat_task.cancel()
                             return
 
                         if (
@@ -1483,23 +1669,14 @@ class App(FastAPI):
                                 status_code=status.HTTP_404_NOT_FOUND,
                             )
 
-                        heartbeat_rate = 15
-                        check_rate = 0.05 if platform.system() == "Windows" else 0.001
                         message = None
                         try:
                             messages = blocks._queue.pending_messages_per_session[
                                 session_hash
                             ]
-                            message = messages.get_nowait()
-                        except EmptyQueue:
-                            await asyncio.sleep(check_rate)
-                            if time.perf_counter() - last_heartbeat > heartbeat_rate:
-                                # Fix this
-                                message = HeartbeatMessage()
-                                # Need to reset last_heartbeat with perf_counter
-                                # otherwise only a single hearbeat msg will be sent
-                                # and then the stream will retry leading to infinite queue 😬
-                                last_heartbeat = time.perf_counter()
+                            message = await asyncio.wait_for(messages.get(), timeout=10)
+                        except (TimeoutError, asyncio.TimeoutError):
+                            pass
 
                         if blocks._queue.stopped:
                             message = UnexpectedErrorMessage(
@@ -1543,6 +1720,7 @@ class App(FastAPI):
                                     response = process_msg(message)
                                     if response is not None:
                                         yield response
+                                    heartbeat_task.cancel()
                                     return
                 except BaseException as e:
                     message = UnexpectedErrorMessage(
@@ -1555,6 +1733,7 @@ class App(FastAPI):
                         await blocks._queue.clean_events(session_hash=session_hash)
                     if response is not None:
                         yield response
+                    heartbeat_task.cancel()
                     raise e
 
             return StreamingResponse(
@@ -1572,26 +1751,36 @@ class App(FastAPI):
             ):
                 files = []
                 data = {}
-                async with request.form() as form:
-                    for key, value in form.items():
-                        if (
-                            isinstance(value, list)
-                            and len(value) > 1
-                            and isinstance(value[0], StarletteUploadFile)
-                        ):
-                            for i, v in enumerate(value):
-                                if isinstance(v, StarletteUploadFile):
-                                    filename = v.filename
-                                    contents = await v.read()
-                                    files.append((filename, contents))
-                                else:
-                                    data[f"{key}-{i}"] = v
-                        elif isinstance(value, StarletteUploadFile):
-                            filename = value.filename
+                max_file_size = (
+                    blocks.max_file_size
+                    if blocks.max_file_size is not None
+                    else math.inf
+                )
+                multipart_parser = GradioMultiPartParser(
+                    request.headers,
+                    request.stream(),
+                    max_files=1000,
+                    max_fields=1000,
+                    max_file_size=max_file_size,
+                )
+                try:
+                    form = await multipart_parser.parse()
+                except MultiPartException as exc:
+                    code = 413 if "File size exceeded" in exc.message else 400
+                    raise HTTPException(status_code=code, detail=exc.message) from None
+                try:
+                    for key, value in form.multi_items():
+                        if isinstance(value, StarletteUploadFile):
                             contents = await value.read()
-                            files.append((filename, contents))
+                            files.append((value.filename, contents))
                         else:
                             data[key] = value
+                finally:
+                    for _, value in form.multi_items():
+                        if isinstance(value, StarletteUploadFile):
+                            await value.close()
+                            with contextlib.suppress(OSError, AttributeError):
+                                os.unlink(value.file.name)
 
                 return ComponentServerBlobBody(
                     data=DataWithFiles(data=data, files=files),
@@ -1646,10 +1835,19 @@ class App(FastAPI):
                 request,  # type: ignore
                 None,
             )
+            fn = utils.get_function_with_locals(
+                fn,
+                app.get_blocks(),
+                event_id=None,
+                in_event_listener=False,
+                request=request,  # type: ignore
+                state=state,
+            )
             if inspect.iscoroutinefunction(fn):
                 return await fn(*processed_input)
-            else:
-                return fn(*processed_input)
+            return await anyio.to_thread.run_sync(
+                fn, *processed_input, limiter=app.get_blocks().limiter
+            )
 
         @router.get(
             "/queue/status",
@@ -1659,7 +1857,7 @@ class App(FastAPI):
         async def get_queue_status():
             return app.get_blocks()._queue.get_status()
 
-        @router.get("/upload_progress")
+        @router.get("/upload_progress", dependencies=[Depends(login_check)])
         async def get_upload_progress(upload_id: str, request: fastapi.Request):
             async def sse_stream(request: fastapi.Request):
                 last_heartbeat = time.perf_counter()
@@ -1707,76 +1905,54 @@ class App(FastAPI):
                 media_type="text/event-stream",
             )
 
+        def set_upload_trace(session_hash: str, start: float):
+            import uuid
+
+            from gradio.profiling import PROFILING_ENABLED, RequestTrace, collector
+
+            if PROFILING_ENABLED:
+                trace = RequestTrace(
+                    event_id=str(uuid.uuid4()),
+                    fn_name="gradio_file_upload",
+                    session_hash=session_hash,
+                )
+                trace.upload_ms = (time.monotonic() - start) * 1000
+                collector.add(trace)
+
         @router.post("/upload", dependencies=[Depends(login_check)])
         async def upload_file(
             request: fastapi.Request,
             bg_tasks: BackgroundTasks,
             upload_id: str | None = None,
         ):
-            content_type_header = request.headers.get("Content-Type")
-            content_type: bytes
-            content_type, _ = parse_options_header(content_type_header or "")
-            if content_type != b"multipart/form-data":
-                raise HTTPException(status_code=400, detail="Invalid content type.")
-
+            start = None
+            if PROFILING_ENABLED:
+                start = time.monotonic()
             try:
-                if upload_id:
-                    file_upload_statuses.track(upload_id)
-                max_file_size = app.get_blocks().max_file_size
-                max_file_size = max_file_size if max_file_size is not None else math.inf
-                multipart_parser = GradioMultiPartParser(
-                    request.headers,
-                    request.stream(),
-                    max_files=1000,
-                    max_fields=1000,
-                    max_file_size=max_file_size,
-                    upload_id=upload_id if upload_id else None,
+                output_files, files_to_copy, locations = await upload_fn(
+                    request,
+                    app.uploaded_file_dir,
+                    blocks.max_file_size
+                    if blocks.max_file_size is not None
+                    else math.inf,
+                    upload_id,
+                    force_move=False,
                     upload_progress=file_upload_statuses if upload_id else None,
                 )
-                form = await multipart_parser.parse()
             except MultiPartException as exc:
                 code = 413 if "maximum allowed size" in exc.message else 400
                 return PlainTextResponse(exc.message, status_code=code)
 
-            output_files = []
-            files_to_copy = []
-            locations: list[str] = []
-
-            for temp_file in form.getlist("files"):
-                if not isinstance(temp_file, GradioUploadFile):
-                    raise TypeError("File is not an instance of GradioUploadFile")
-                if temp_file.filename:
-                    file_name = Path(temp_file.filename).name
-                    name = client_utils.strip_invalid_filename_characters(file_name)
-                else:
-                    name = f"tmp{secrets.token_hex(5)}"
-                directory = Path(app.uploaded_file_dir) / temp_file.sha.hexdigest()
-                directory.mkdir(exist_ok=True, parents=True)
-                try:
-                    dest = utils.safe_join(
-                        DeveloperPath(str(directory)), UserProvidedPath(name)
-                    )
-                except InvalidPathError as err:
-                    raise HTTPException(
-                        status_code=400, detail=f"Invalid file name: {name}"
-                    ) from err
-                temp_file.file.close()
-                # we need to move the temp file to the cache directory
-                # but that's possibly blocking and we're in an async function
-                # so we try to rename (this is what shutil.move tries first)
-                # which should be super fast.
-                # if that fails, we move in the background.
-                try:
-                    os.rename(temp_file.file.name, dest)
-                except OSError:
-                    files_to_copy.append(temp_file.file.name)
-                    locations.append(dest)
-                output_files.append(dest)
-                blocks.upload_file_set.add(dest)
             if files_to_copy:
                 bg_tasks.add_task(
                     move_uploaded_files_to_cache, files_to_copy, locations
                 )
+            if PROFILING_ENABLED:
+                bg_tasks.add_task(
+                    set_upload_trace, request.headers.get("session_hash", ""), start
+                )
+            blocks.upload_file_set.update(output_files)
+
             return output_files
 
         @router.get("/startup-events")
@@ -1826,9 +2002,6 @@ class App(FastAPI):
 
         @app.get("/manifest.json")
         def manifest_json():
-            # if not blocks.pwa:
-            #     raise HTTPException(status_code=404, detail="PWA not enabled.")
-
             favicon_path = blocks.favicon_path
             if isinstance(favicon_path, Path):
                 favicon_path = str(favicon_path)
@@ -1892,8 +2065,12 @@ class App(FastAPI):
             print(f"* Monitoring URL: {monitoring_url} *")
             return HTMLResponse("See console for monitoring URL.")
 
-        @app.get("/monitoring/summary")
+        @app.get("/monitoring/summary", dependencies=[Depends(login_check)])
         async def _():
+            if blocks.enable_monitoring is False:
+                raise HTTPException(
+                    status_code=403, detail="Monitoring is not enabled."
+                )
             return app.get_blocks()._queue.cached_event_analytics_summary
 
         @app.get("/monitoring/{key}")
@@ -2315,6 +2492,26 @@ Existing code:
                 except Exception as e:
                     print(f"Error cleaning up file {file}: {str(e)}")
 
+        from gradio.profiling import PROFILING_ENABLED
+
+        if PROFILING_ENABLED:
+            from gradio.profiling import collector
+
+            @router.get("/profiling/traces", dependencies=[Depends(login_check)])
+            async def profiling_traces(
+                last_n: int | None = None,
+            ):
+                return ORJSONResponse(collector.get_all(last_n=last_n))
+
+            @router.get("/profiling/summary", dependencies=[Depends(login_check)])
+            async def profiling_summary():
+                return ORJSONResponse(collector.get_summary())
+
+            @router.post("/profiling/clear", dependencies=[Depends(login_check)])
+            async def profiling_clear():
+                collector.clear()
+                return ORJSONResponse({"status": "cleared"})
+
         app.include_router(router)
         return app
 
@@ -2403,25 +2600,6 @@ demo.launch()
     return system_prompt
 
 
-def routes_safe_join(directory: DeveloperPath, path: UserProvidedPath) -> str:
-    """Safely join the user path to the directory while performing some additional http-related checks,
-    e.g. ensuring that the full path exists on the local file system and is not a directory
-    """
-    if path == "":
-        raise fastapi.HTTPException(400)
-    if route_utils.starts_with_protocol(path):
-        raise fastapi.HTTPException(403)
-    try:
-        fullpath = Path(utils.safe_join(directory, path))
-    except InvalidPathError as e:
-        raise fastapi.HTTPException(403) from e
-    if fullpath.is_dir():
-        raise fastapi.HTTPException(403)
-    if not fullpath.exists():
-        raise fastapi.HTTPException(404)
-    return str(fullpath)
-
-
 def get_types(cls_set: list[type]):
     docset = []
     types = []
@@ -2443,13 +2621,15 @@ def mount_gradio_app(
     server_name: str = "0.0.0.0",
     server_port: int = 7860,
     footer_links: (
-        list[Literal["api", "gradio", "settings"] | dict[str, str]] | None
+        list[Literal["api", "gradio", "settings", "runs"] | dict[str, str]] | None
     ) = None,
+    run_history: bool | None = None,
     app_kwargs: dict[str, Any] | None = None,
     *,
     auth: Callable | tuple[str, str] | list[tuple[str, str]] | None = None,
     auth_message: str | None = None,
-    auth_dependency: Callable[[fastapi.Request], str | None] | None = None,
+    auth_dependency: Callable[[fastapi.Request], str | None | Awaitable[str | None]]
+    | None = None,
     root_path: str | None = None,
     allowed_paths: list[str] | None = None,
     blocked_paths: list[str] | None = None,
@@ -2473,7 +2653,7 @@ def mount_gradio_app(
     """Mount a gradio.Blocks to an existing FastAPI application.
 
     Parameters:
-        app: The parent FastAPI application.
+        app: The parent FastAPI application. If it configures its own `CORSMiddleware`, Gradio will not add its own CORS headers to the mounted app, so that your `allow_origins` policy is the one that applies.
         blocks: The blocks object we want to mount to the parent app.
         path: The path at which the gradio application will be mounted, e.g. "/gradio".
         server_name: The server name on which the Gradio app will be run.
@@ -2488,7 +2668,8 @@ def mount_gradio_app(
         favicon_path: If a path to a file (.png, .gif, or .ico) is provided, it will be used as the favicon for this gradio app's page.
         show_error: If True, any errors in the gradio app will be displayed in an alert modal and printed in the browser console log. Otherwise, errors will only be visible in the terminal session running the Gradio app.
         max_file_size: The maximum file size in bytes that can be uploaded. Can be a string of the form "<value><unit>", where value is any positive integer and unit is one of "b", "kb", "mb", "gb", "tb". If None, no limit is set.
-        footer_links: The links to display in the footer of the app. Accepts a list, where each element of the list must be one of "api", "gradio", or "settings" corresponding to the API docs, "built with Gradio", and settings pages respectively. If None, all three links will be shown in the footer. An empty list means that no footer is shown.
+        footer_links: The links to display in the footer of the app. Accepts a list, where each element of the list must be one of "api", "gradio", "settings", or "runs" corresponding to the API docs, "built with Gradio", the settings page, and the run history page respectively. The "runs" link only appears if `run_history` is True and the browser has at least one saved run for this app. If None, all four links will be shown in the footer. An empty list means that no footer is shown.
+        run_history: If True, users can review and reload calls from the run history page at /gradio_api/runs. Runs are saved privately in the browser by default; from that page, a user can instead connect a Hugging Face bucket and save future runs there. Browser history is scoped to the logged-in user if the app uses `auth`. If False, nothing is recorded, the run history page is disabled, and any runs previously saved by this app are deleted from the browser. If None, will use the GRADIO_RUN_HISTORY environment variable or default to True.
         ssr_mode: If True, the Gradio app will be rendered using server-side rendering mode, which is typically more performant and provides better SEO, but this requires Node 20+ to be installed on the system. If False, the app will be rendered using client-side rendering mode. If None, will use GRADIO_SSR_MODE environment variable or default to False.
         node_server_name: The name of the Node server to use for SSR. If None, will use GRADIO_NODE_SERVER_NAME environment variable or search for a node binary in the system.
         i18n: If provided, the i18n instance to use for this gradio app.
@@ -2497,7 +2678,7 @@ def mount_gradio_app(
         theme: A Theme object or a string representing a theme. If a string, will look for a built-in theme with that name (e.g. "soft" or "default"), or will attempt to load a theme from the Hugging Face Hub (e.g. "gradio/monochrome"). If None, will use the Default theme.
         css: Custom css as a code string. This css will be included in the demo webpage.
         css_paths: Custom css as a pathlib.Path to a css file or a list of such paths. This css files will be read, concatenated, and included in the demo webpage. If the `css` parameter is also set, the css from `css` will be included first.
-        js: Custom js as a code string. The custom js should be in the form of a single js function. This function will automatically be executed when the page loads. For more flexibility, use the head parameter to insert js inside <script> tags.
+        js: Custom JavaScript provided as either a function or a raw code string. A function is automatically invoked; otherwise the code is executed directly when the page loads. To run JavaScript as a document-level `<script>` tag, use the `head` parameter.
         head: Custom html code to insert into the head of the demo webpage. This can be used to add custom meta tags, multiple scripts, stylesheets, etc. to the page.
         head_paths: Custom html code as a pathlib.Path to a html file or a list of such paths. This html files will be read, concatenated, and included in the head of the demo webpage. If the `head` parameter is also set, the html from `head` will be included first.
     Example:
@@ -2518,8 +2699,15 @@ def mount_gradio_app(
         )
 
     blocks.dev_mode = False
+    blocks.run_history = (
+        os.environ.get("GRADIO_RUN_HISTORY", "True").lower() == "true"
+        if run_history is None
+        else run_history
+    )
     if footer_links is None:
-        footer_links = ["api", "gradio", "settings"]
+        footer_links = ["api", "gradio", "settings", "runs"]
+    if not blocks.run_history:
+        footer_links = [link for link in footer_links if link != "runs"]
     blocks.footer_links = footer_links
     blocks.max_file_size = utils._parse_file_size(max_file_size)
     blocks.config = blocks.get_config_file()
@@ -2586,8 +2774,8 @@ def mount_gradio_app(
         blocks,
         app_kwargs=app_kwargs,
         auth_dependency=auth_dependency,
-        ssr_mode=blocks.ssr_mode,
         mcp_server=mcp_server,
+        parent_app=app,
     )
     old_lifespan = app.router.lifespan_context
 

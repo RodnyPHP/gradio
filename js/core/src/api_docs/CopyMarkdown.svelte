@@ -10,32 +10,57 @@
 	import { represent_value } from "./utils";
 	import type { Dependency } from "../types";
 
-	export let current_language: "python" | "javascript" | "bash" | "mcp";
-	export let space_id: string | null;
-	export let root: string;
-	export let api_count: number;
-	export let tools: any[];
-	export let py_docs: string;
-	export let js_docs: string;
-	export let bash_docs: string;
-	export let mcp_docs: string;
-	export let spaces_docs_suffix: string;
-	export let mcp_server_active: boolean;
-	export let mcp_server_url_streamable: string;
-	export let config_snippets: Record<string, string>;
-	export let markdown_code_snippets: Record<string, Record<string, string>>;
-	export let dependencies: Dependency[];
-	export let info: any;
-	export let js_info: any;
+	let {
+		current_language,
+		space_id,
+		root,
+		api_count,
+		tools,
+		py_docs,
+		js_docs,
+		bash_docs,
+		mcp_docs,
+		spaces_docs_suffix,
+		mcp_server_active,
+		mcp_server_url_streamable,
+		config_snippets,
+		markdown_code_snippets,
+		dependencies,
+		info,
+		js_info
+	}: {
+		current_language:
+			| "python"
+			| "javascript"
+			| "bash"
+			| "skill"
+			| "mcp"
+			| "cli";
+		space_id: string | null;
+		root: string;
+		api_count: number;
+		tools: any[];
+		py_docs: string;
+		js_docs: string;
+		bash_docs: string;
+		mcp_docs: string;
+		spaces_docs_suffix: string;
+		mcp_server_active: boolean;
+		mcp_server_url_streamable: string;
+		config_snippets: Record<string, string>;
+		markdown_code_snippets: Record<string, Record<string, string>>;
+		dependencies: Dependency[];
+		info: any;
+		js_info: any;
+	} = $props();
 
-	let markdown_content: Record<string, string> = {
-		python: "",
-		javascript: "",
-		bash: "",
-		mcp: ""
-	};
-	/* eslint-disable complexity */
-	$: markdown_content.python = `
+	function oauth_token_note(api_name: string, how: string): string {
+		const requirement = info?.named_endpoints["/" + api_name]?.oauth_token;
+		if (!requirement) return "";
+		return `Acts on your behalf: this endpoint's function takes a \`gr.OAuthToken\`, so it receives your Hugging Face token and can act as you (${requirement}). ${how} This differs from the token that authenticates you to the app itself, and should only be sent to endpoints that declare they take one.\n`;
+	}
+
+	let markdown_python = $derived(`
 # Python API documentation for ${space_id || root}
 API Endpoints: ${api_count}
 
@@ -61,6 +86,7 @@ ${info?.named_endpoints["/" + d.api_name]?.description ? "Description: " + info?
 ${markdown_code_snippets[d.api_name as keyof typeof markdown_code_snippets]?.python}
 \`\`\`
 
+${oauth_token_note(d.api_name as string, "Pass `oauth_token` to `Client()` to grant it.")}
 Accepts ${info?.named_endpoints["/" + d.api_name]?.parameters?.length} parameter${info?.named_endpoints["/" + d.api_name]?.parameters?.length != 1 ? "s" : ""}:
 
 ${info?.named_endpoints["/" + d.api_name]?.parameters
@@ -85,8 +111,8 @@ ${info?.named_endpoints["/" + d.api_name]?.returns
 `
 	)
 	.join("\n\n\n")}
-`;
-	$: markdown_content.javascript = `
+`);
+	let markdown_javascript = $derived(`
 # JavaScript API documentation for ${space_id || root}
 API Endpoints: ${api_count}
 
@@ -112,6 +138,7 @@ ${info?.named_endpoints["/" + d.api_name]?.description ? "Description: " + info?
 ${markdown_code_snippets[d.api_name as keyof typeof markdown_code_snippets]?.javascript}
 \`\`\`
 
+${oauth_token_note(d.api_name as string, "Pass `oauth_token` to `Client.connect()` to grant it.")}
 Accepts ${info?.named_endpoints["/" + d.api_name]?.parameters?.length} parameter${info?.named_endpoints["/" + d.api_name]?.parameters?.length != 1 ? "s" : ""}:
 
 ${info?.named_endpoints["/" + d.api_name]?.parameters
@@ -135,8 +162,8 @@ ${info?.named_endpoints["/" + d.api_name]?.returns
 	.join("\n\n")}`
 	)
 	.join("\n\n\n")}
-`;
-	$: markdown_content.bash = `
+`);
+	let markdown_bash = $derived(`
 # Bash API documentation for ${space_id || root}
 API Endpoints: ${api_count}
 
@@ -148,7 +175,9 @@ curl --version
 
 2. Find the API endpoint below corresponding to your desired function in the app. Copy the code snippet, replacing the placeholder values with your own input data.
 
-Making a prediction and getting a result requires 2 requests: a POST and a GET request. The POST request returns an EVENT_ID, which is used in the second GET request to fetch the results. In these snippets, we've used awk and read to parse the results, combining these two requests into one command for ease of use. See [curl docs](${bash_docs}).
+Making a prediction and getting a result requires 2 requests: a POST and a GET request. The POST request returns an EVENT_ID, which is used in the second GET request to fetch the results. In these snippets, we've used awk and read to parse the results, combining these two requests into one command for ease of use.
+
+If your endpoint accepts files, you must first upload them via a POST to \`/upload\`, then reference the returned path with the meta key: \`{"path": "...", "meta": {"_type": "gradio.FileData"}}\`. See [curl docs](${bash_docs}).
 
 ${dependencies
 	.filter(
@@ -164,29 +193,30 @@ ${info?.named_endpoints["/" + d.api_name]?.description ? "Description: " + info?
 ${markdown_code_snippets[d.api_name as keyof typeof markdown_code_snippets]?.bash}
 \`\`\`
 
-Accepts ${info?.named_endpoints["/" + d.api_name]?.parameters?.length} parameter${info?.named_endpoints["/" + d.api_name]?.parameters?.length != 1 ? "s" : ""}:
+${oauth_token_note(d.api_name as string, "Send it as the `oauth_token` key of the request body.")}
+Accepts a JSON object with ${info?.named_endpoints["/" + d.api_name]?.parameters?.length} key${info?.named_endpoints["/" + d.api_name]?.parameters?.length != 1 ? "s" : ""}:
 
 ${info?.named_endpoints["/" + d.api_name]?.parameters
 	?.map((p: any) => {
 		const defaultValue = "Required";
-		const type = `${js_info.named_endpoints["/" + d.api_name]?.parameters.find((_p: any) => _p.parameter_name === p.parameter_name)?.type || "any"}`;
-		return `${`[${js_info.named_endpoints["/" + d.api_name]?.parameters.findIndex((_p: any) => _p.parameter_name === p.parameter_name)}]`}:\n- Type: ${type}\n- ${defaultValue}\n- The input value that is provided in the ${p.label} ${p.component} component. ${p.python_type.description}`;
+		const type = `${p.python_type.type}`;
+		return `${p.parameter_name}:\n- Type: ${type}\n- ${defaultValue}\n- The input value that is provided in the ${p.label} ${p.component} component. ${p.python_type.description}`;
 	})
 	.join("\n\n")}
 
-Returns ${info?.named_endpoints["/" + d.api_name]?.returns?.length > 1 ? `list of ${info?.named_endpoints["/" + d.api_name]?.returns?.length} elements` : "1 element"}:
+Returns ${info?.named_endpoints["/" + d.api_name]?.returns?.length > 1 ? `an array of ${info?.named_endpoints["/" + d.api_name]?.returns?.length} elements` : "an array of 1 element"}:
 
 ${info?.named_endpoints["/" + d.api_name]?.returns
 	?.map((r: any, i: number) => {
-		const type = js_info.named_endpoints["/" + d.api_name]?.returns[i]?.type;
+		const type = r.python_type.type;
 		return `${info?.named_endpoints["/" + d.api_name]?.returns?.length > 1 ? `[${i}]: ` : ""}- Type: ${type}\n- The output value that appears in the "${r.label}" ${r.component} component.`;
 	})
 	.join("\n\n")}
 `
 	)
 	.join("\n\n\n")}
-`;
-	$: markdown_content.mcp = `
+`);
+	let markdown_mcp = $derived(`
 # MCP documentation for ${space_id || root}
 MCP Tools: ${tools.length}
 
@@ -263,38 +293,37 @@ Read more about the MCP in the [Gradio docs](${mcp_docs}).
 `
 }
 
-`;
-	/* eslint-enable complexity */
+`);
 
-	let current_language_label =
+	let markdown_content: Record<string, string> = $derived({
+		python: markdown_python,
+		javascript: markdown_javascript,
+		bash: markdown_bash,
+		mcp: markdown_mcp
+	});
+
+	let current_language_label = $derived(
 		current_language === "python"
 			? "Python"
 			: current_language === "javascript"
 				? "JavaScript"
 				: current_language === "bash"
 					? "Bash"
-					: "MCP";
+					: current_language === "cli"
+						? "CLI"
+						: "MCP"
+	);
 
-	$: current_language;
-	$: current_language_label =
-		current_language === "python"
-			? "Python"
-			: current_language === "javascript"
-				? "JavaScript"
-				: current_language === "bash"
-					? "Bash"
-					: "MCP";
+	let label = $derived(
+		`Copy ${current_language_label} Docs as Markdown for LLMs`
+	);
 
-	let label = `Copy ${current_language_label} Docs as Markdown for LLMs`;
-	$: label = `Copy ${current_language_label} Docs as Markdown for LLMs`;
+	let copied = $state(false);
 
-	let copied = false;
-	$: copied;
-
-	let open = false;
-	let triggerEl: HTMLDivElement | null = null;
-	let menuEl: HTMLDivElement | null = null;
-	let menuStyle = "";
+	let open = $state(false);
+	let triggerEl: HTMLDivElement | null = $state(null);
+	let menuEl: HTMLDivElement | null = $state(null);
+	let menuStyle = $state("");
 
 	const isClient = typeof window !== "undefined";
 
@@ -362,7 +391,7 @@ Read the documentation above so I can ask questions about it.`
 	}
 
 	async function copyMarkdown(
-		current_language: "python" | "javascript" | "bash" | "mcp"
+		current_language: "python" | "javascript" | "bash" | "skill" | "mcp" | "cli"
 	): Promise<void> {
 		try {
 			if (!markdown_content[current_language]) {
@@ -393,16 +422,16 @@ Read the documentation above so I can ask questions about it.`
 </script>
 
 <svelte:window
-	on:mousedown={handleWindowPointer}
-	on:keydown={handleWindowKeydown}
-	on:resize={handleWindowResize}
-	on:scroll={handleWindowScroll}
+	onmousedown={handleWindowPointer}
+	onkeydown={handleWindowKeydown}
+	onresize={handleWindowResize}
+	onscroll={handleWindowScroll}
 />
 
 <div class="container-wrapper">
 	<div bind:this={triggerEl} class="trigger-wrapper">
 		<button
-			on:click={() => copyMarkdown(current_language)}
+			onclick={() => copyMarkdown(current_language)}
 			class="copy-button"
 			aria-live="polite"
 		>
@@ -418,7 +447,7 @@ Read the documentation above so I can ask questions about it.`
 			>
 		</button>
 		<button
-			on:click={toggleMenu}
+			onclick={toggleMenu}
 			class="menu-toggle-button"
 			aria-haspopup="menu"
 			aria-expanded={open}
@@ -435,7 +464,7 @@ Read the documentation above so I can ask questions about it.`
 			class="backdrop-overlay"
 			aria-hidden="true"
 			style="background: transparent;"
-			on:click={closeMenu}
+			onclick={closeMenu}
 		></div>
 		<div
 			bind:this={menuEl}
@@ -446,7 +475,7 @@ Read the documentation above so I can ask questions about it.`
 		>
 			<button
 				role="menuitem"
-				on:click={() => {
+				onclick={() => {
 					copyMarkdown(current_language);
 					closeMenu();
 				}}
@@ -465,7 +494,7 @@ Read the documentation above so I can ask questions about it.`
 
 			<button
 				role="menuitem"
-				on:click={() => {
+				onclick={() => {
 					openHuggingChat();
 					closeMenu();
 				}}

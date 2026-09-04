@@ -1,6 +1,4 @@
-<svelte:options accessors={true} />
-
-<script context="module" lang="ts">
+<script module lang="ts">
 	export { default as Webcam } from "./shared/Webcam.svelte";
 	export { default as BaseImageUploader } from "./shared/ImageUploader.svelte";
 	export { default as BaseStaticImage } from "./shared/ImagePreview.svelte";
@@ -19,7 +17,7 @@
 	import type { ImageProps, ImageEvents } from "./shared/types";
 
 	let stream_data = { value: null };
-	let upload_promise = $state<Promise<any>>();
+	let upload_promise = $state<Promise<any> | null>(null);
 	class ImageGradio extends Gradio<ImageEvents, ImageProps> {
 		async get_data() {
 			if (upload_promise) {
@@ -37,44 +35,34 @@
 	}
 
 	const props = $props();
-	const gradio = new ImageGradio(props);
+	const gradio = new ImageGradio(props, { value: null });
 
+	let value = $state(gradio.props.value ?? null);
 	let fullscreen = $state(false);
 	let dragging = $state(false);
 	let active_source = $derived.by(() =>
 		gradio.props.sources ? gradio.props.sources[0] : null
 	);
 
-	let upload_component: ImageUploader;
-	const handle_drag_event = (event: Event): void => {
-		const drag_event = event as DragEvent;
-		drag_event.preventDefault();
-		drag_event.stopPropagation();
-		if (drag_event.type === "dragenter" || drag_event.type === "dragover") {
-			dragging = true;
-		} else if (drag_event.type === "dragleave") {
-			dragging = false;
-		}
-	};
-
-	const handle_drop = (event: Event): void => {
-		if (gradio.shared.interactive) {
-			const drop_event = event as DragEvent;
-			drop_event.preventDefault();
-			drop_event.stopPropagation();
-			dragging = false;
-
-			if (upload_component) {
-				upload_component.loadFilesFromDrop(drop_event);
-			}
-		}
-	};
-
-	let old_value = $state(gradio.props.value);
+	$effect(() => {
+		value = gradio.props.value ?? null;
+	});
 
 	$effect(() => {
-		if (old_value != gradio.props.value) {
-			old_value = gradio.props.value;
+		gradio.props.value = value;
+	});
+
+	let old_value = value;
+	let mounted = false;
+
+	$effect(() => {
+		if (!mounted) {
+			old_value = value;
+			mounted = true;
+			return;
+		}
+		if (old_value !== value) {
+			old_value = value;
 			gradio.dispatch("change");
 		}
 	});
@@ -94,7 +82,7 @@
 		width={gradio.props.width}
 		allow_overflow={false}
 		container={gradio.shared.container}
-		scale{gradio.shared.scale}
+		scale={gradio.shared.scale}
 		min_width={gradio.shared.min_width}
 		bind:fullscreen
 	>
@@ -106,14 +94,15 @@
 				gradio.dispatch("clear_status", gradio.shared.loading_status)}
 		/>
 		<StaticImage
-			on:select={({ detail }) => gradio.dispatch("select", detail)}
-			on:share={({ detail }) => gradio.dispatch("share", detail)}
-			on:error={({ detail }) => gradio.dispatch("error", detail)}
-			on:fullscreen={({ detail }) => {
+			onselect={(detail) => gradio.dispatch("select", detail)}
+			onshare={(detail) => gradio.dispatch("share", detail)}
+			onerror={(detail) => gradio.dispatch("error", detail)}
+			onfullscreen={(detail) => {
 				fullscreen = detail;
 			}}
 			{fullscreen}
-			value={gradio.props.value}
+			{value}
+			alt_text={gradio.props.alt_text}
 			label={gradio.shared.label}
 			show_label={gradio.shared.show_label}
 			selectable={gradio.props._selectable}
@@ -139,12 +128,8 @@
 		scale={gradio.shared.scale}
 		min_width={gradio.shared.min_width}
 		bind:fullscreen
-		on:dragenter={handle_drag_event}
-		on:dragleave={handle_drag_event}
-		on:dragover={handle_drag_event}
-		on:drop={handle_drop}
 	>
-		{#if gradio.shared.loading_status.type === "output"}
+		{#if gradio.shared.loading_status.type === "output" || gradio.shared.loading_status.validation_error}
 			<StatusTracker
 				autoscroll={gradio.shared.autoscroll}
 				i18n={gradio.i18n}
@@ -155,10 +140,10 @@
 		{/if}
 		<ImageUploader
 			bind:upload_promise
-			bind:this={upload_component}
 			bind:active_source
-			bind:value={gradio.props.value}
+			bind:value
 			bind:dragging
+			alt_text={gradio.props.alt_text}
 			selectable={gradio.props._selectable}
 			root={gradio.shared.root}
 			sources={gradio.props.sources}
@@ -168,31 +153,29 @@
 				: gradio.props.buttons.some(
 						(btn) => typeof btn === "string" && btn === "fullscreen"
 					)}
-			on:edit={() => gradio.dispatch("edit")}
-			on:clear={() => {
+			onclear={() => {
 				fullscreen = false;
 				gradio.dispatch("clear");
 				gradio.dispatch("input");
 			}}
-			on:stream={({ detail }) => {
+			onstream={(detail) => {
 				stream_data = detail;
 				gradio.dispatch("stream", detail);
 			}}
-			on:drag={({ detail }) => (dragging = detail)}
-			on:upload={() => {
+			ondrag={(detail) => (dragging = detail)}
+			onupload={() => {
 				gradio.dispatch("upload");
 				gradio.dispatch("input");
 			}}
-			on:select={({ detail }) => gradio.dispatch("select", detail)}
-			on:share={({ detail }) => gradio.dispatch("share", detail)}
-			on:error={({ detail }) => {
+			onselect={(detail) => gradio.dispatch("select", detail)}
+			onerror={(detail) => {
 				gradio.shared.loading_status.status = "error";
 				gradio.dispatch("error", detail);
 			}}
-			on:close_stream={() => {
+			onclose_stream={() => {
 				gradio.dispatch("close_stream");
 			}}
-			on:fullscreen={({ detail }) => {
+			onfullscreen={(detail) => {
 				fullscreen = detail;
 			}}
 			label={gradio.shared.label}

@@ -16,5 +16,8 @@ declare module "virtual:component-loader" {
 	export function load_component(args: Args): {
 		name: ComponentMeta["type"];
 		component: LoadedComponent;
+		runtime: false | typeof import("svelte");
 	};
 }
+
+declare module "virtual:cc-init";

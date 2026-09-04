@@ -44,15 +44,6 @@
 		gradio.dispatch("custom_button_click", { id });
 	};
 
-	let old_value = $state(gradio.props.value);
-
-	$effect(() => {
-		if (old_value != gradio.props.value) {
-			old_value = gradio.props.value;
-			gradio.dispatch("change");
-		}
-	});
-
 	let dialogue_container_element: HTMLDivElement;
 
 	let showTagMenu = $state(false);
@@ -351,7 +342,9 @@
 	function handle_click_outside(event: MouseEvent): void {
 		if (showTagMenu) {
 			const target = event.target as Node;
-			const tagMenu = document.getElementById("tag-menu");
+			const tagMenu = document.querySelector(
+				'[data-testid="dialogue-tag-menu"]'
+			);
 			if (tagMenu && !tagMenu.contains(target)) {
 				showTagMenu = false;
 			}
@@ -404,7 +397,7 @@
 	});
 </script>
 
-<svelte:window on:click={handle_click_outside} />
+<svelte:window onclick={handle_click_outside} />
 
 <div class:container={gradio.shared.container}>
 	{#if gradio.shared.show_label && (buttons.some((btn) => typeof btn === "string" && btn === "copy") || buttons.some((btn) => typeof btn !== "string"))}
@@ -412,7 +405,7 @@
 			{#if buttons.some((btn) => typeof btn === "string" && btn === "copy")}
 				<IconButton
 					Icon={copied ? Check : Copy}
-					on:click={handle_copy}
+					onclick={handle_copy}
 					label={copied ? "Copied" : "Copy"}
 				/>
 			{/if}
@@ -431,8 +424,8 @@
 				label="Plain Text"
 				bind:checked
 				disabled={is_formatting || is_unformatting}
-				on:click={async (e) => {
-					if (!e.detail.checked) {
+				onclick={async (e) => {
+					if (!e.checked) {
 						is_unformatting = true;
 						try {
 							gradio.props.value = await gradio.shared.server.unformat({
@@ -457,6 +450,7 @@
 	{#if !checked && gradio.props.ui_mode !== "text"}
 		<div
 			class="dialogue-container"
+			data-testid="dialogue-container"
 			bind:this={dialogue_container_element}
 			class:loading={is_unformatting}
 		>
@@ -478,8 +472,8 @@
 						class="speaker-column"
 						role="button"
 						tabindex="0"
-						on:mouseenter={() => disabled && (hoveredSpeaker = line.speaker)}
-						on:mouseleave={() => disabled && (hoveredSpeaker = null)}
+						onmouseenter={() => disabled && (hoveredSpeaker = line.speaker)}
+						onmouseleave={() => disabled && (hoveredSpeaker = null)}
 					>
 						{#if disabled}
 							<textarea
@@ -506,9 +500,9 @@
 								bind:value={line.text}
 								placeholder={gradio.props.placeholder}
 								{disabled}
-								on:input={(event) => handle_input(event, i)}
-								on:focus={(event) => handle_input(event, i)}
-								on:keydown={(event) => {
+								oninput={(event) => handle_input(event, i)}
+								onfocus={(event) => handle_input(event, i)}
+								onkeydown={(event) => {
 									if (event.key === "Escape" && showTagMenu) {
 										showTagMenu = false;
 										selectedOptionIndex = 0;
@@ -539,7 +533,7 @@
 							></textarea>
 							{#if showTagMenu && currentLineIndex === i}
 								<div
-									id="tag-menu"
+									data-testid="dialogue-tag-menu"
 									class="tag-menu"
 									transition:fade={{ duration: 100 }}
 								>
@@ -564,7 +558,8 @@
 						<div class:action-column={i == 0} class:hidden={disabled}>
 							<button
 								class="add-button"
-								on:click={() => add_line(i)}
+								data-testid="dialogue-add-button-{i}"
+								onclick={() => add_line(i)}
 								aria-label="Add new line"
 								{disabled}
 							>
@@ -575,7 +570,8 @@
 					<div class="action-column" class:hidden={disabled || i == 0}>
 						<button
 							class="delete-button"
-							on:click={() => delete_line(i)}
+							data-testid="dialogue-delete-button-{i}"
+							onclick={() => delete_line(i)}
 							aria-label="Remove current line"
 							{disabled}
 						>
@@ -599,12 +595,12 @@
 				placeholder={gradio.props.placeholder}
 				rows={5}
 				{disabled}
-				on:input={(event) => {
+				oninput={(event) => {
 					handle_input(event, 0);
 					gradio.props.value = textbox_value;
 				}}
-				on:focus={(event) => handle_input(event, 0)}
-				on:keydown={(event) => {
+				onfocus={(event) => handle_input(event, 0)}
+				onkeydown={(event) => {
 					if (event.key === "Escape" && showTagMenu) {
 						showTagMenu = false;
 						selectedOptionIndex = 0;
@@ -631,7 +627,7 @@
 			/>
 			{#if showTagMenu}
 				<div
-					id="tag-menu"
+					data-testid="dialogue-tag-menu"
 					class="tag-menu-plain-text"
 					transition:fade={{ duration: 100 }}
 				>
@@ -644,7 +640,7 @@
 							gradio.props.tags.indexOf(s)
 						)[selectedOptionIndex]}
 						show_options={true}
-						on:change={(e) => insert_tag(e)}
+						onchange={(index) => insert_tag(index)}
 					/>
 				</div>
 			{/if}
@@ -653,7 +649,12 @@
 
 	{#if gradio.props.submit_btn && !disabled}
 		<div class="submit-container">
-			<button class="submit-button" on:click={handle_submit} {disabled}>
+			<button
+				class="submit-button"
+				data-testid="dialogue-submit-button"
+				onclick={handle_submit}
+				{disabled}
+			>
 				{#if typeof gradio.props.submit_btn === "string"}
 					{gradio.props.submit_btn}
 				{:else}

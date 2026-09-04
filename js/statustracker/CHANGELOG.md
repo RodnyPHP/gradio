@@ -1,5 +1,124 @@
 # @gradio/statustracker
 
+## 0.15.3
+
+### Dependency updates
+
+- @gradio/sanitize@0.4.2
+
+## 0.15.3
+
+### Fixes
+
+- [#13708](https://github.com/gradio-app/gradio/pull/13708) [`3458ea4`](https://github.com/gradio-app/gradio/commit/3458ea4db41e6d08d4363ad05df99ba3a4110082) - Fix processing timer and other inherited text unreadable in dark mode.  Thanks @hysts!
+
+## 0.15.2
+
+### Fixes
+
+- [#13627](https://github.com/gradio-app/gradio/pull/13627) [`3b12faa`](https://github.com/gradio-app/gradio/commit/3b12faa404660cd68ff4b3f20fbf6af3f3906670) - Keep in-flight events and generators working when an app is hot-reloaded (`gradio app.py`).  Thanks @abidlabs!
+
+### Dependency updates
+
+- @gradio/utils@0.14.0
+- @gradio/atoms@0.26.1
+- @gradio/sanitize@0.4.1
+
+## 0.15.1
+
+### Dependency updates
+
+- @gradio/icons@0.16.0
+- @gradio/atoms@0.26.0
+
+## 0.15.0
+
+### Features
+
+- [#13526](https://github.com/gradio-app/gradio/pull/13526) [`53cb4ca`](https://github.com/gradio-app/gradio/commit/53cb4cae1ec3521e9170d12867253516413ba37a) - Run `pnpm lint` and `pnpm ts:check` on CI.  Thanks @abidlabs!
+
+### Dependency updates
+
+- @gradio/atoms@0.25.0
+- @gradio/utils@0.13.0
+
+## 0.14.1
+
+### Dependency updates
+
+- @gradio/atoms@0.24.0
+
+## 0.14.0
+
+### Features
+
+- [#13176](https://github.com/gradio-app/gradio/pull/13176) [`45c4ecd`](https://github.com/gradio-app/gradio/commit/45c4ecd25fc83c7ee0210d216df1bc4bd509e622) - Add `@gr.cache()` decorator for caching deterministic functions, as as well as a lower-level `gr.Cache` that uses dependency injection.  Thanks @abidlabs!
+
+### Fixes
+
+- [#13181](https://github.com/gradio-app/gradio/pull/13181) [`755c3d3`](https://github.com/gradio-app/gradio/commit/755c3d32c388a36d2296f8d895c5c0e1144fb54f) - fix: show validation errors on StatusTracker-dependent components.  Thanks @hysts!
+
+### Dependency updates
+
+- @gradio/atoms@0.23.1
+
+## 0.13.1
+
+### Dependency updates
+
+- @gradio/utils@0.12.2
+- @gradio/atoms@0.23.0
+
+## 0.13.0
+
+### Features
+
+- [#12998](https://github.com/gradio-app/gradio/pull/12998) [`d5e1b8f`](https://github.com/gradio-app/gradio/commit/d5e1b8f6cb7473b70fc8c082589996d5e0402810) - use a real browser environment for unit tests.  Thanks @pngwn!
+
+### Dependency updates
+
+- @gradio/utils@0.12.1
+
+## 0.12.5
+
+### Dependency updates
+
+- @gradio/utils@0.12.0
+- @gradio/atoms@0.22.2
+
+## 0.12.4
+
+### Fixes
+
+- [#12877](https://github.com/gradio-app/gradio/pull/12877) [`ebbd242`](https://github.com/gradio-app/gradio/commit/ebbd24231dbc006c21fbbf1df00918be16883b86) - Ensure disconnected toast text is visible.  Thanks @hannahblair!
+
+### Dependency updates
+
+- @gradio/utils@0.11.3
+- @gradio/atoms@0.22.0
+
+## 0.12.3
+
+### Fixes
+
+- [#12813](https://github.com/gradio-app/gradio/pull/12813) [`99caae6`](https://github.com/gradio-app/gradio/commit/99caae630771569e90f1e6a208183ad1a0826460) - Migrate StatusTracker to Svelte 5.  Thanks @freddyaboulton!
+
+### Dependency updates
+
+- @gradio/atoms@0.21.0
+
+## 0.12.2
+
+### Fixes
+
+- [#12800](https://github.com/gradio-app/gradio/pull/12800) [`7a1c321`](https://github.com/gradio-app/gradio/commit/7a1c321b6546ba05a353488f5133e8262c4a8a39) - Bump svelte/kit for security reasons.  Thanks @freddyaboulton!
+
+### Dependency updates
+
+- @gradio/atoms@0.20.1
+- @gradio/utils@0.11.2
+- @gradio/icons@0.15.1
+
 ## 0.12.1
 
 ### Dependency updates

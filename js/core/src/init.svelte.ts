@@ -3,8 +3,7 @@ import {
 	get_component,
 	get_inputs_outputs
 } from "./init_utils";
-import { translate_if_needed } from "./i18n";
-import { tick } from "svelte";
+import { settled, tick } from "svelte";
 import { dequal } from "dequal";
 
 import type {
@@ -17,8 +16,12 @@ import type {
 	ServerFunctions
 } from "./types";
 import { type SharedProps } from "@gradio/utils";
-import { allowed_shared_props } from "@gradio/utils";
+import {
+	allowed_shared_props,
+	resolve_current_origin_url
+} from "@gradio/utils";
 import { Client } from "@gradio/client";
+import { reactive_formatter as reactive_formatter_store } from "./gradio_helper";
 
 type client_return = Awaited<ReturnType<typeof Client.connect>>;
 
@@ -41,6 +44,23 @@ const type_map = {
 	walkthrough: "tabs",
 	walkthroughstep: "tabitem"
 };
+
+export function get_api_url(
+	config: Omit<AppConfig, "api_url">,
+	current_location?: string
+): string {
+	// Handle api_prefix correctly when app is mounted at a subpath.
+	// config.root may not include a trailing slash, so we normalize its pathname
+	// before appending api_prefix to ensure correct URL construction.
+	const apiPrefix = config.api_prefix.startsWith("/")
+		? config.api_prefix
+		: "/" + config.api_prefix;
+	return resolve_current_origin_url(
+		config.root,
+		apiPrefix,
+		current_location
+	).toString();
+}
 export class AppTree {
 	/** the raw component structure received from the backend */
 	#component_payload: ComponentMeta[];
@@ -64,10 +84,11 @@ export class AppTree {
 	#output_ids: Set<number> = new Set();
 
 	/** A list of components that are currently loading */
-	#pending_components: Array<LoadingComponent> = [];
+	#pending_components: LoadingComponent[] = [];
 
 	#get_callbacks = new Map<number, get_data_type>();
 	#set_callbacks = new Map<number, set_data_type>();
+	#pending_updates = new Map<number, Record<string, unknown>>();
 	#event_dispatcher: (id: number, event: string, data: unknown) => void;
 	component_ids: number[];
 	initial_tabs: Record<number, Tab[]> = {};
@@ -75,7 +96,7 @@ export class AppTree {
 	components_to_register: Set<number> = new Set();
 	ready: Promise<void>;
 	ready_resolve!: () => void;
-	resolved: boolean = false;
+	resolved = false;
 	#hidden_on_startup: Set<number> = new Set();
 
 	constructor(
@@ -91,13 +112,15 @@ export class AppTree {
 			this.ready_resolve = resolve;
 		});
 		this.reactive_formatter = reactive_formatter;
+		const api_url = get_api_url(config);
 		this.#config = {
 			...config,
-			api_url: new URL(config.api_prefix, config.root).toString()
+			api_url
 		};
 		this.#component_payload = components;
 		this.#layout_payload = layout;
 		this.#dependency_payload = dependencies;
+		this.#event_dispatcher = event_dispatcher;
 		this.root = this.create_node(
 			{ id: layout.id, children: [] },
 			new Map(),
@@ -131,7 +154,7 @@ export class AppTree {
 		this.initial_tabs = {};
 		gather_initial_tabs(this.root!, this.initial_tabs);
 		this.postprocess(this.root!);
-		this.#event_dispatcher = event_dispatcher;
+
 		this.root_untracked = this.root;
 	}
 
@@ -143,9 +166,10 @@ export class AppTree {
 	) {
 		this.#layout_payload = layout;
 		this.#component_payload = components;
+		const api_url = get_api_url(config);
 		this.#config = {
 			...config,
-			api_url: new URL(config.api_prefix, config.root).toString()
+			api_url
 		};
 		this.#dependency_payload = dependencies;
 
@@ -180,6 +204,15 @@ export class AppTree {
 		this.initial_tabs = {};
 		gather_initial_tabs(this.root!, this.initial_tabs);
 		this.postprocess(this.root!);
+
+		// Push new server-defined props into reused component instances.
+		// MountComponents matches children by position (unkeyed each), so most
+		// component instances are reused across a reload — but the Gradio class
+		// inside each instance aliases the OLD node's props, so without an
+		// explicit set_data the UI keeps showing pre-reload values. Same
+		// mechanism @gr.render uses: only defined keys are pushed, so locally
+		// edited values (server sends them undefined) are preserved.
+		this.#sync_reused_components_after_rerender(this.root!);
 	}
 
 	/**
@@ -196,10 +229,32 @@ export class AppTree {
 		this.#set_callbacks.set(id, _set_data);
 		this.#get_callbacks.set(id, _get_data);
 		this.components_to_register.delete(id);
+
+		// Apply any pending updates that were stored while the component
+		// was not yet mounted (e.g. hidden in an inactive tab).
+		// We must apply AFTER tick() so that the Gradio class's $effect
+		// (which syncs from node props) has already run. Otherwise the
+		// $effect would overwrite the values we set here.
+		const pending = this.#pending_updates.get(id);
+		if (pending) {
+			this.#pending_updates.delete(id);
+			settled().then(() => {
+				const _set = this.#set_callbacks.get(id);
+				if (_set) _set(pending);
+			});
+		}
+
 		if (this.components_to_register.size === 0 && !this.resolved) {
 			this.resolved = true;
 			this.ready_resolve();
 		}
+	}
+
+	unregister_component(id: number, _set_data?: set_data_type): void {
+		const current_set_data = this.#set_callbacks.get(id);
+		if (_set_data && current_set_data !== _set_data) return;
+		this.#set_callbacks.delete(id);
+		this.#get_callbacks.delete(id);
 	}
 
 	/**
@@ -222,8 +277,7 @@ export class AppTree {
 					node,
 					this.components_to_register
 				),
-			(node) => handle_empty_forms(node, this.components_to_register),
-			(node) => translate_props(node),
+
 			(node) => apply_initial_tabs(node, this.initial_tabs),
 			(node) => this.find_attached_events(node, this.#dependency_payload),
 			(node) =>
@@ -312,7 +366,8 @@ export class AppTree {
 				props: {
 					visible: true,
 					root: "",
-					theme_mode: "light"
+					theme_mode: "light",
+					scale: this.#config.fill_height ? 1 : null
 				},
 				component_class_id: "column",
 				key: null
@@ -324,18 +379,35 @@ export class AppTree {
 		}
 		if (reactive_formatter) {
 			component.props.i18n = reactive_formatter;
+			// Inject the live formatter store so dynamically rendered components
+			// (gr.render / reload) also re-translate their props on locale change.
+			component.props.i18n_store = reactive_formatter_store;
 		}
+
 		const processed_props = gather_props(
 			opts.id,
 			component.props,
 			[this.#input_ids, this.#output_ids],
 			this.client,
 			this.#config.api_url,
-			{ ...this.#config }
+			{
+				...this.#config,
+				register_component: this.register_component.bind(this),
+				unregister_component: this.unregister_component.bind(this),
+				dispatcher: this.#event_dispatcher.bind(this)
+			}
 		);
 
 		const type =
 			type_map[component.type as keyof typeof type_map] || component.type;
+		const loading_component =
+			processed_props.shared_props.visible !== false
+				? get_component(
+						component.type,
+						component.component_class_id,
+						this.#config.api_url || ""
+					)
+				: null;
 
 		const node = {
 			id: opts.id,
@@ -346,12 +418,9 @@ export class AppTree {
 			component_class_id: component.component_class_id || component.type,
 			component:
 				processed_props.shared_props.visible !== false
-					? get_component(
-							component.type,
-							component.component_class_id,
-							this.#config.api_url || ""
-						)
+					? loading_component?.component || null
 					: null,
+			runtime: loading_component?.runtime || (false as false),
 			key: component.key,
 			rendered_in: component.rendered_in,
 			documentation: component.documentation,
@@ -384,21 +453,44 @@ export class AppTree {
 			throw new Error("Rerender failed: root node not found in current tree");
 		}
 		n.children = subtree.children;
+
+		// push server prop changes into mounted components, skipping undefined
+		// so local edits survive. keys + identity persist.
+		// queue for pending re-registrations, apply directly otherwise.
+		this.#sync_reused_components_after_rerender(subtree);
 	}
 
-	async update_visibility(
-		node: ProcessedComponentMeta,
-		new_state: any
-	): Promise<void> {
-		node.children.forEach((child) => {
-			const _set_data = this.#set_callbacks.get(child.id);
-			if (_set_data) {
-				_set_data(new_state);
+	#sync_reused_components_after_rerender(node: ProcessedComponentMeta): void {
+		const data: Record<string, unknown> = {};
+		for (const key in node.props.shared_props) {
+			// loading_status is owned by DependencyManager / LoadingStatusState and
+			// is remapped separately across hot-reloads. Pushing the empty default
+			// from a freshly created node would wipe an in-flight progress indicator.
+			if (key === "loading_status") continue;
+			// @ts-ignore
+			const v = node.props.shared_props[key];
+			if (v !== undefined) data[key] = v;
+		}
+		for (const key in node.props.props) {
+			const v = node.props.props[key];
+			if (v !== undefined) data[key] = v;
+		}
+		if (Object.keys(data).length > 0) {
+			const set_data = this.#set_callbacks.get(node.id);
+			if (set_data) {
+				set_data(data);
+			} else if (node.props.shared_props.visible !== false) {
+				// component hasn't re-registered yet. queue the update for later.
+				const existing = this.#pending_updates.get(node.id) || {};
+				this.#pending_updates.set(node.id, { ...existing, ...data });
 			}
-			this.update_visibility(child, new_state);
-		});
+		}
+		if (node.children) {
+			for (const child of node.children) {
+				this.#sync_reused_components_after_rerender(child);
+			}
+		}
 	}
-
 	/*
 	 * Updates the state of a component by its ID
 	 * @param id the ID of the component to update
@@ -407,42 +499,76 @@ export class AppTree {
 	async update_state(
 		id: number,
 		new_state: Partial<SharedProps> & Record<string, unknown>,
-		check_visibility: boolean = true
+		check_visibility = true
 	) {
-		// Visibility is tricky 😅
-		// If the component is not visible, it has not been rendered
-		// and so it has no _set_data callback
-		// Therefore, we need to traverse the tree and set the visible prop to true
-		// and then render it and its children. After that, we can call the _set_data callback
-		const node = find_node_by_id(this.root!, id);
+		let node = find_node_by_id(this.root!, id);
 		let already_updated_visibility = false;
 		if (check_visibility && !node?.component) {
 			await tick();
-			this.root = this.traverse(this.root!, [
-				//@ts-ignore
-				(n) => set_visibility_for_updated_node(n, id, new_state.visible),
-				//@ts-ignore
-				(n) => update_parent_visibility(n, id, new_state.visible),
-				(n) => handle_visibility(n, this.#config.api_url)
-			]);
+			// Update the node in place. Rebuilding the tree with traverse() here
+			// replaces every node's children array, and two rebuilds racing in one
+			// event (two outputs made visible together) freeze Svelte's reactivity.
+			const updated_node = find_node_by_id(this.root!, id);
+			if (updated_node && "visible" in new_state) {
+				updated_node.props.shared_props.visible =
+					new_state.visible as SharedProps["visible"];
+			}
+			load_components(this.root!, this.#config.api_url);
 			await tick();
+			node = find_node_by_id(this.root!, id);
 			already_updated_visibility = true;
 		}
 		const _set_data = this.#set_callbacks.get(id);
+		if (node && !("value" in new_state)) {
+			await this.#sync_current_value_to_node(id, node);
+			await this.#sync_current_values_to_descendants(node);
+		}
+		const old_value = node?.props.props.value;
+		if (node) {
+			apply_state_to_node(node, new_state);
+		}
 		if (!_set_data) {
-			const old_value = node?.props.props.value;
-			// @ts-ignore
-			const new_props = create_props_shared_props(new_state);
-			node!.props.shared_props = {
-				...node?.props.shared_props,
-				...new_props.shared_props
-			};
-			node!.props.props = { ...node?.props.props, ...new_props.props };
+			// Also store as pending so the value can be applied via _set_data
+			// when the component eventually mounts and registers.
+			// Exclude loading_status because it is a transient real-time prop
+			// managed independently by the loading status store. Storing it would
+			// cause a stale "pending" update to be applied after the correct
+			// "complete" status has already been received, trapping the component
+			// in an infinite loading state.
+			// Exclude visible as well: it is the source of truth for mounting and
+			// is kept current in place on the node above (and synced into the
+			// component from node props on mount), so it never needs to be replayed
+			// via _set_data. Storing it would let a stale pending visible (captured
+			// on an earlier yield) be applied after the component has already
+			// mounted with the correct visibility, hiding it again (#13494).
+			const {
+				loading_status: _ls,
+				visible: _vis,
+				...rest_new_state
+			} = new_state;
+			// Only store a pending update if there is something other than
+			// loading_status/visible to apply. Otherwise we'd cache an empty
+			// object, which still triggers a no-op deferred _set() on mount (extra
+			// microtask churn for components hidden while loading status changed).
+			if (Object.keys(rest_new_state).length > 0) {
+				const existing = this.#pending_updates.get(id) || {};
+				this.#pending_updates.set(id, { ...existing, ...rest_new_state });
+			}
+
 			if ("value" in new_state && !dequal(old_value, new_state.value)) {
 				this.#event_dispatcher(id, "change", null);
 			}
+
+			// If this is a non-mounted tabitem, update the parent Tabs'
+			// initial_tabs so the tab button reflects the new state.
+			if (node?.type === "tabitem") {
+				this.#update_parent_tabs_initial_tab(id, node);
+			}
 		} else if (_set_data) {
 			_set_data(new_state);
+			if (node?.type === "tabitem") {
+				this.#update_parent_tabs_initial_tab(id, node);
+			}
 		}
 		if (!check_visibility || already_updated_visibility) return;
 		// need to let the UI settle before traversing again
@@ -453,10 +579,99 @@ export class AppTree {
 		// any values currently in the UI.
 		// @ts-ignore
 		await this.update_visibility(node, new_state);
-		const parent_node = find_parent(this.root!, id);
-		if (parent_node)
-			// @ts-ignore
-			update_parent_visibility(parent_node, id, new_state.visible);
+	}
+
+	async update_visibility(
+		node: ProcessedComponentMeta,
+		new_state: any
+	): Promise<void> {
+		for (const child of node.children) {
+			const _set_data = this.#set_callbacks.get(child.id);
+			if (!("value" in new_state)) {
+				await this.#sync_current_value_to_node(child.id, child);
+			}
+			if (_set_data) {
+				_set_data(new_state);
+			}
+			await this.update_visibility(child, new_state);
+		}
+	}
+
+	async #sync_current_value_to_node(
+		id: number,
+		node: ProcessedComponentMeta
+	): Promise<void> {
+		const _get_data = this.#get_callbacks.get(id);
+		if (!_get_data) return;
+
+		const current_data = await _get_data();
+		if (current_data && "value" in current_data) {
+			apply_state_to_node(node, { value: current_data.value });
+		}
+	}
+
+	async #sync_current_values_to_descendants(
+		node: ProcessedComponentMeta
+	): Promise<void> {
+		for (const child of node.children) {
+			await this.#sync_current_value_to_node(child.id, child);
+			await this.#sync_current_values_to_descendants(child);
+		}
+	}
+
+	/**
+	 * Updates the parent Tabs component's initial_tabs when a non-mounted
+	 * tabitem's props change. This ensures the tab button (rendered by
+	 * the Tabs component) reflects the updated state even though the
+	 * TabItem component itself is not mounted.
+	 */
+	#update_parent_tabs_initial_tab(
+		id: number,
+		node: ProcessedComponentMeta
+	): void {
+		const parent = find_parent(this.root!, id);
+		if (!parent || parent.type !== "tabs") return;
+
+		const initial_tabs = parent.props.props.initial_tabs as Tab[];
+		if (!initial_tabs) return;
+
+		const tab_index = initial_tabs.findIndex((t) => t.component_id === node.id);
+		if (tab_index === -1) return;
+
+		const i18n = node.props.props.i18n as ((str: string) => string) | undefined;
+		const raw_label = node.props.shared_props.label as string;
+		// Use original_visibility since the node's visible may have been
+		// set to false by the startup optimization for non-selected tabs.
+		const original_visibility = (
+			node as ProcessedComponentMeta & {
+				original_visibility?: boolean | "hidden";
+			}
+		).original_visibility;
+		const visible =
+			original_visibility !== undefined
+				? original_visibility
+				: (node.props.shared_props.visible as boolean);
+
+		initial_tabs[tab_index] = {
+			label: i18n ? i18n(raw_label) : raw_label,
+			id: node.props.props.id as string,
+			elem_id: node.props.shared_props.elem_id,
+			visible: visible === "hidden" ? false : visible,
+			interactive: node.props.shared_props.interactive,
+			scale: node.props.shared_props.scale || null,
+			component_id: node.id
+		};
+
+		// Trigger reactivity by replacing the array
+		parent.props.props.initial_tabs = [...initial_tabs];
+
+		// Also update via _set_data if the Tabs component is mounted
+		const parent_set_data = this.#set_callbacks.get(parent.id);
+		if (parent_set_data) {
+			parent_set_data({
+				initial_tabs: parent.props.props.initial_tabs
+			});
+		}
 	}
 
 	/**
@@ -477,28 +692,82 @@ export class AppTree {
 	}
 
 	async render_previously_invisible_children(id: number) {
-		this.root = this.traverse(this.root!, [
-			(node) => {
-				if (node.id === id) {
-					make_visible_if_not_rendered(node, this.#hidden_on_startup);
-				}
-				return node;
-			},
-			(node) => handle_visibility(node, this.#config.api_url)
-		]);
+		const node = find_node_by_id(this.root!, id);
+		if (!node) return;
+
+		// Check if this node or any of its descendants need to be made visible.
+		// If not, skip entirely to avoid unnecessary reactive updates
+		// from mutating the tree through the $state proxy.
+		if (
+			!this.#hidden_on_startup.has(node.id) &&
+			!has_hidden_descendants(node, this.#hidden_on_startup)
+		) {
+			return;
+		}
+
+		make_visible_if_not_rendered(node, this.#hidden_on_startup, true);
+		load_components(node, this.#config.api_url);
+		await tick();
+		await settled();
+		await new Promise((resolve) => requestAnimationFrame(resolve));
+		this.#sync_reused_components_after_rerender(node);
 	}
 }
 
 function make_visible_if_not_rendered(
 	node: ProcessedComponentMeta,
-	hidden_on_startup: Set<number>
+	hidden_on_startup: Set<number>,
+	is_target_node = false
 ): void {
-	node.props.shared_props.visible = hidden_on_startup.has(node.id)
-		? true
-		: node.props.shared_props.visible;
-	node.children.forEach((child) => {
-		make_visible_if_not_rendered(child, hidden_on_startup);
-	});
+	if (hidden_on_startup.has(node.id)) {
+		node.props.shared_props = {
+			...node.props.shared_props,
+			visible: true
+		};
+	}
+
+	if (node.type === "tabs") {
+		const initial_tabs = node.props.props.initial_tabs as Tab[] | undefined;
+		const selectedId = node.props.props.selected ?? initial_tabs?.[0]?.id;
+		node.children.forEach((child) => {
+			if (
+				child.type === "tabitem" &&
+				(child.props.props.id === selectedId || child.id === selectedId)
+			) {
+				make_visible_if_not_rendered(child, hidden_on_startup, false);
+			}
+		});
+	} else if (
+		node.type === "accordion" &&
+		node.props.props.open === false &&
+		!is_target_node
+	) {
+		// Don't recurse into closed accordion content
+	} else {
+		node.children.forEach((child) => {
+			make_visible_if_not_rendered(child, hidden_on_startup, false);
+		});
+	}
+}
+
+function has_hidden_descendants(
+	node: ProcessedComponentMeta,
+	hidden_on_startup: Set<number>
+): boolean {
+	for (const child of node.children) {
+		if (hidden_on_startup.has(child.id)) return true;
+		if (has_hidden_descendants(child, hidden_on_startup)) return true;
+	}
+	return false;
+}
+
+function load_components(node: ProcessedComponentMeta, api_url: string): void {
+	if (node.props.shared_props.visible && !node.component) {
+		const loaded = get_component(node.type, node.component_class_id, api_url);
+		node.component = loaded.component;
+		node.runtime = loaded.runtime;
+	}
+	node.children.forEach((child) => load_components(child, api_url));
 }
 
 /**
@@ -549,6 +818,24 @@ function create_props_shared_props(props: ComponentMeta["props"]): {
 	return { shared_props: _shared_props as SharedProps, props: _props };
 }
 
+function apply_state_to_node(
+	node: ProcessedComponentMeta,
+	new_state: Partial<SharedProps> & Record<string, unknown>
+): void {
+	// Keep the app tree in step with set_data. Lazy-render sync later reads
+	// this tree and should not replay stale component state.
+	const new_props = create_props_shared_props(
+		new_state as ComponentMeta["props"]
+	);
+	for (const key in new_props.shared_props) {
+		// @ts-ignore
+		node.props.shared_props[key] = new_props.shared_props[key];
+	}
+	for (const key in new_props.props) {
+		node.props.props[key] = new_props.props[key];
+	}
+}
+
 /**
  * Gathers the props for a component
  * @param id the ID of the component
@@ -575,6 +862,7 @@ function gather_props(
 	for (const key in additional) {
 		if (allowed_shared_props.includes(key as keyof SharedProps)) {
 			const _key = key as keyof SharedProps;
+			//@ts-ignore
 			_shared_props[_key] = additional[key];
 		} else {
 			_props[key] = additional[key];
@@ -592,8 +880,9 @@ function gather_props(
 
 	_shared_props.load_component = (
 		name: string,
-		variant: "base" | "component" | "example"
-	) => get_component(name, "", api_url, variant) as LoadingComponent;
+		variant: "base" | "component" | "example",
+		component_class_id?: string
+	) => get_component(name, component_class_id || "", api_url, variant);
 
 	_shared_props.visible =
 		_shared_props.visible === undefined ? true : _shared_props.visible;
@@ -608,9 +897,15 @@ function handle_visibility(
 ): ProcessedComponentMeta {
 	// Check if the node is visible
 	if (node.props.shared_props.visible && !node.component) {
+		const loading_component = get_component(
+			node.type,
+			node.component_class_id,
+			api_url
+		);
 		const result: ProcessedComponentMeta = {
 			...node,
-			component: get_component(node.type, node.component_class_id, api_url),
+			component: loading_component.component,
+
 			children: []
 		};
 
@@ -623,17 +918,6 @@ function handle_visibility(
 	} else {
 		return node;
 	}
-}
-
-function set_visibility_for_updated_node(
-	node: ProcessedComponentMeta,
-	id: number,
-	visible: boolean
-): ProcessedComponentMeta {
-	if (node.id == id) {
-		node.props.shared_props.visible = visible;
-	}
-	return node;
 }
 
 function _untrack(
@@ -691,84 +975,13 @@ function untrack_children_of_closed_accordions_or_inactive_tabs(
 			if (
 				child.type === "tabitem" &&
 				child.props.props.id !==
-					(node.props.props.selected || node.props.props.initial_tabs[0].id)
+					//@ts-ignore
+					(node.props.props.selected ?? node.props.props.initial_tabs[0].id)
 			) {
 				_untrack(child, components_to_register);
 				mark_component_invisible_if_visible(child, hidden_on_startup);
 			}
 		});
-	}
-	return node;
-}
-
-function handle_empty_forms(
-	node: ProcessedComponentMeta,
-	components_to_register: Set<number>
-): ProcessedComponentMeta {
-	// Check if the node is visible
-	if (node.type === "form") {
-		const all_children_invisible = node.children.every(
-			(child) => child.props.shared_props.visible === false
-		);
-
-		if (all_children_invisible) {
-			node.props.shared_props.visible = false;
-			components_to_register.delete(node.id);
-			return node;
-		}
-	}
-
-	return node;
-}
-
-function update_parent_visibility(
-	node: ProcessedComponentMeta,
-	child_made_visible: number,
-	visibility_state: boolean | "hidden"
-): ProcessedComponentMeta {
-	// This function was added to address a tricky situation:
-	// Form components are wrapped in a Form component automatically.
-	// If all the children of the Form are invisible, the Form itself is marked invisible.
-	// in AppTree.postprocess -> handle_empty_forms
-	// This is to avoid rendering empty forms in the UI. They look ugly.
-	// So what happens when a child inside the Form is made visible again?
-	// The Form needs to become visible again too.
-	// If the child is made invisible, the form should be too if all other children are invisible.
-	// However, we are not doing this now since what we want to do is fetch the latest visibility of all
-	// the children from the UI. However, get_data only returns the props, not the shared props.
-	if (
-		node.type === "form" &&
-		node.children.length &&
-		node.children.some((child) => child.id === child_made_visible)
-	) {
-		if (visibility_state === true) node.props.shared_props.visible = true;
-		else if (!visibility_state && node.children.length === 1)
-			node.props.shared_props.visible = "hidden";
-	}
-	return node;
-}
-
-function translate_props(node: ProcessedComponentMeta): ProcessedComponentMeta {
-	const supported_props = [
-		"description",
-		"info",
-		"title",
-		"placeholder",
-		"value",
-		"label"
-	];
-	for (const attr of Object.keys(node.props.shared_props)) {
-		if (supported_props.includes(attr as string)) {
-			// @ts-ignore
-			node.props.shared_props[attr] = translate_if_needed(
-				node.props.shared_props[attr as keyof SharedProps]
-			);
-		}
-	}
-	for (const attr of Object.keys(node.props.props)) {
-		if (supported_props.includes(attr as string)) {
-			node.props.props[attr] = translate_if_needed(node.props.props[attr]);
-		}
 	}
 	return node;
 }
@@ -796,11 +1009,13 @@ function _gather_initial_tabs(
 		if (!(parent_tab_id in initial_tabs)) {
 			initial_tabs[parent_tab_id] = [];
 		}
-		if (!("id" in node.props.props)) {
+		if (node.props.props.id == null) {
 			node.props.props.id = node.id;
 		}
+		const i18n = node.props.props.i18n as ((str: string) => string) | undefined;
+		const raw_label = node.props.shared_props.label as string;
 		initial_tabs[parent_tab_id].push({
-			label: node.props.shared_props.label as string,
+			label: i18n ? i18n(raw_label) : raw_label,
 			id: node.props.props.id as string,
 			elem_id: node.props.shared_props.elem_id,
 			visible: node.props.shared_props.visible as boolean,

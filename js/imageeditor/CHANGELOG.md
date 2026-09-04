@@ -1,5 +1,174 @@
 # @gradio/imageeditor
 
+## 0.20.1
+
+### Dependency updates
+
+- @gradio/client@2.5.1
+
+## 0.20.1
+
+### Dependency updates
+
+- @gradio/client@2.5.0
+
+## 0.20.1
+
+### Dependency updates
+
+- @gradio/client@2.4.0
+- @gradio/utils@0.14.0
+- @gradio/atoms@0.26.1
+- @gradio/statustracker@0.15.2
+- @gradio/upload@0.18.2
+- @gradio/image@0.28.1
+
+## 0.20.0
+
+### Features
+
+- [#13543](https://github.com/gradio-app/gradio/pull/13543) [`0533483`](https://github.com/gradio-app/gradio/commit/0533483bccdee38f334a598f18297e8c02966343) - Migrate Image components to Svelte 5.  Thanks @dawoodkhan82!
+
+### Fixes
+
+- [#13571](https://github.com/gradio-app/gradio/pull/13571) [`c576675`](https://github.com/gradio-app/gradio/commit/c576675c1d0d9a917706bb830f7a738d9f96672f) - Fix `gr.ImageEditor` high CPU usage when idle by sleeping the render loop when nothing is changing.  Thanks @abidlabs!
+- [`dcc654d`](https://github.com/gradio-app/gradio/commit/dcc654d8467c9202a78c50b31e7d123e9804ebf4) - Fix ImageEditor transform tools and hidden cleanup.  Thanks @dawoodkhan82!
+- [#13597](https://github.com/gradio-app/gradio/pull/13597) [`7a595cb`](https://github.com/gradio-app/gradio/commit/7a595cb72d8a82151ee2231e86d20c91d0bb9062) - Fix ImageEditor brush texture resets.  Thanks @dawoodkhan82!
+
+### Dependency updates
+
+- @gradio/statustracker@0.15.1
+- @gradio/icons@0.16.0
+- @gradio/atoms@0.26.0
+- @gradio/image@0.28.0
+- @gradio/client@2.3.1
+- @gradio/upload@0.18.1
+
+## 0.19.0
+
+### Features
+
+- [#13526](https://github.com/gradio-app/gradio/pull/13526) [`53cb4ca`](https://github.com/gradio-app/gradio/commit/53cb4cae1ec3521e9170d12867253516413ba37a) - Run `pnpm lint` and `pnpm ts:check` on CI.  Thanks @abidlabs!
+
+### Dependency updates
+
+- @gradio/atoms@0.25.0
+- @gradio/statustracker@0.15.0
+- @gradio/utils@0.13.0
+- @gradio/client@2.3.0
+- @gradio/upload@0.18.0
+- @gradio/image@0.27.0
+
+## 0.18.12
+
+### Dependency updates
+
+- @gradio/client@2.2.2
+
+## 0.18.12
+
+### Fixes
+
+- [#13379](https://github.com/gradio-app/gradio/pull/13379) [`b8e8745`](https://github.com/gradio-app/gradio/commit/b8e8745d2f4fb156dd12d57a3f4eb2e165f20216) - fix default tool logic in gr.ImageEditor.  Thanks @hannahblair!
+
+### Dependency updates
+
+- @gradio/client@2.2.1
+- @gradio/upload@0.17.10
+
+## 0.18.11
+
+### Dependency updates
+
+- @gradio/atoms@0.24.0
+- @gradio/statustracker@0.14.1
+- @gradio/upload@0.17.9
+- @gradio/image@0.26.3
+
+## 0.18.10
+
+### Dependency updates
+
+- @gradio/atoms@0.23.1
+- @gradio/statustracker@0.14.0
+- @gradio/client@2.2.0
+- @gradio/image@0.26.2
+
+## 0.18.9
+
+### Fixes
+
+- [#12981](https://github.com/gradio-app/gradio/pull/12981) [`8bc7513`](https://github.com/gradio-app/gradio/commit/8bc75137b24ba8a8571b49b9b006741819c0518b) - Fix ImageEditor brush preview dead area on vertical images.  Thanks @MaxwellCalkin!
+
+### Dependency updates
+
+- @gradio/utils@0.12.2
+- @gradio/atoms@0.23.0
+- @gradio/statustracker@0.13.1
+- @gradio/upload@0.17.8
+- @gradio/image@0.26.1
+
+## 0.18.8
+
+### Dependency updates
+
+- @gradio/utils@0.12.1
+- @gradio/statustracker@0.13.0
+- @gradio/image@0.26.0
+
+## 0.18.7
+
+### Dependency updates
+
+- @gradio/statustracker@0.12.5
+- @gradio/utils@0.12.0
+- @gradio/atoms@0.22.2
+- @gradio/upload@0.17.7
+- @gradio/image@0.25.4
+
+## 0.18.6
+
+### Dependency updates
+
+- @gradio/client@2.1.0
+
+## 0.18.6
+
+### Dependency updates
+
+- @gradio/utils@0.11.3
+- @gradio/atoms@0.22.0
+- @gradio/statustracker@0.12.4
+- @gradio/upload@0.17.6
+- @gradio/image@0.25.3
+
+## 0.18.5
+
+### Dependency updates
+
+- @gradio/atoms@0.21.0
+- @gradio/client@2.0.4
+- @gradio/statustracker@0.12.3
+- @gradio/image@0.25.2
+- @gradio/upload@0.17.5
+
+## 0.18.4
+
+### Fixes
+
+- [#12800](https://github.com/gradio-app/gradio/pull/12800) [`7a1c321`](https://github.com/gradio-app/gradio/commit/7a1c321b6546ba05a353488f5133e8262c4a8a39) - Bump svelte/kit for security reasons.  Thanks @freddyaboulton!
+- [#12779](https://github.com/gradio-app/gradio/pull/12779) [`ea2d3e9`](https://github.com/gradio-app/gradio/commit/ea2d3e985a8b42d188e551f517c5825c00790628) - Migrate Audio + Upload + Atoms to Svelte 5.  Thanks @dawoodkhan82!
+
+### Dependency updates
+
+- @gradio/statustracker@0.12.2
+- @gradio/atoms@0.20.1
+- @gradio/utils@0.11.2
+- @gradio/icons@0.15.1
+- @gradio/upload@0.17.4
+- @gradio/client@2.0.3
+- @gradio/image@0.25.1
+
 ## 0.18.3
 
 ### Dependency updates

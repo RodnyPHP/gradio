@@ -1,4 +1,4 @@
-<script context="module" lang="ts">
+<script module lang="ts">
 	export { default as BaseHTML } from "./shared/HTML.svelte";
 	export { default as BaseExample } from "./Example.svelte";
 </script>
@@ -10,13 +10,16 @@
 	import { Block, BlockLabel, IconButtonWrapper } from "@gradio/atoms";
 	import { Code as CodeIcon } from "@gradio/icons";
 	import { css_units } from "@gradio/utils";
+	import { prepare_files } from "@gradio/client";
 	import type { HTMLProps, HTMLEvents } from "./types.ts";
+	import type { Snippet } from "svelte";
 
 	let props = $props();
+	let children: Snippet | undefined = props.children;
 	const gradio = new Gradio<HTMLEvents, HTMLProps>(props);
 
 	let _props = $derived({
-		value: gradio.props.value || "",
+		value: gradio.props.value ?? "",
 		label: gradio.shared.label,
 		visible: gradio.shared.visible,
 		...gradio.props.props
@@ -29,6 +32,25 @@
 			gradio.dispatch("change");
 		}
 	});
+
+	async function upload(file: File): Promise<{ path: string; url: string }> {
+		try {
+			const file_data = await prepare_files([file]);
+			const result = await gradio.shared.client.upload(
+				file_data,
+				gradio.shared.root,
+				undefined,
+				gradio.shared.max_file_size ?? undefined
+			);
+			if (result && result[0]) {
+				return { path: result[0].path, url: result[0].url! };
+			}
+			throw new Error("Upload failed");
+		} catch (e) {
+			gradio.dispatch("error", e instanceof Error ? e.message : String(e));
+			throw e;
+		}
+	}
 </script>
 
 <Block
@@ -36,7 +58,7 @@
 	elem_id={gradio.shared.elem_id}
 	elem_classes={gradio.shared.elem_classes}
 	container={gradio.shared.container}
-	padding={true}
+	padding={gradio.shared.padding !== false}
 	overflow_behavior="visible"
 >
 	{#if gradio.shared.show_label && gradio.props.buttons && gradio.props.buttons.length > 0}
@@ -52,7 +74,7 @@
 			Icon={CodeIcon}
 			show_label={gradio.shared.show_label}
 			label={gradio.shared.label}
-			float={false}
+			float={true}
 		/>
 	{/if}
 
@@ -61,11 +83,11 @@
 		i18n={gradio.i18n}
 		{...gradio.shared.loading_status}
 		variant="center"
-		on_clear_status={() => gradio.dispatch("clear_status", loading_status)}
+		on_clear_status={() =>
+			gradio.dispatch("clear_status", gradio.shared.loading_status)}
 	/>
 	<div
 		class="html-container"
-		class:padding={gradio.shared.padding}
 		class:pending={gradio.shared.loading_status?.status === "pending" &&
 			gradio.shared.loading_status?.show_progress !== "hidden"}
 		style:min-height={gradio.props.min_height &&
@@ -75,36 +97,52 @@
 		style:max-height={gradio.props.max_height
 			? css_units(gradio.props.max_height)
 			: undefined}
+		style:overflow-y={gradio.props.max_height ? "auto" : undefined}
+		class:label-padding={gradio.shared.show_label ?? undefined}
 	>
-		<HTML
-			props={_props}
-			html_template={gradio.props.html_template}
-			css_template={gradio.props.css_template}
-			js_on_load={gradio.props.js_on_load}
-			elem_classes={gradio.shared.elem_classes}
-			visible={gradio.shared.visible}
-			autoscroll={gradio.shared.autoscroll}
-			apply_default_css={gradio.props.apply_default_css}
-			component_class_name={gradio.props.component_class_name}
-			on:event={(e) => {
-				gradio.dispatch(e.detail.type, e.detail.data);
-			}}
-			on:update_value={(e) => {
-				if (e.detail.property === "value") {
-					gradio.props.value = e.detail.data;
-				} else if (e.detail.property === "label") {
-					gradio.shared.label = e.detail.data;
-				} else if (e.detail.property === "visible") {
-					gradio.shared.visible = e.detail.data;
-				}
-			}}
-		/>
+		<!-- js_on_load is mount-only, so remount the renderer for a new gr.render component. -->
+		{#key gradio.shared.id}
+			<HTML
+				props={_props}
+				html_template={gradio.props.html_template}
+				css_template={gradio.props.css_template}
+				js_on_load={gradio.props.js_on_load}
+				elem_classes={gradio.shared.elem_classes}
+				visible={gradio.shared.visible === "hidden"
+					? false
+					: gradio.shared.visible}
+				autoscroll={gradio.shared.autoscroll}
+				apply_default_css={gradio.props.apply_default_css}
+				head={gradio.props.head}
+				component_class_name={gradio.props.component_class_name}
+				{upload}
+				server={gradio.shared.server}
+				onevent={(detail) => {
+					gradio.dispatch(detail.type, detail.data);
+				}}
+				onupdate_value={(detail) => {
+					if (detail.property === "value") {
+						gradio.props.value = detail.data;
+					} else if (detail.property === "label") {
+						gradio.shared.label = detail.data;
+					} else if (detail.property === "visible") {
+						gradio.shared.visible = detail.data;
+					}
+				}}
+			>
+				{@render children?.()}
+			</HTML>
+		{/key}
 	</div>
 </Block>
 
 <style>
-	.padding {
+	.html-container {
 		padding: var(--block-padding);
+	}
+
+	.label-padding {
+		padding-top: var(--spacing-xxl);
 	}
 
 	div {

@@ -1,10 +1,23 @@
 <script lang="ts">
 	import { Loader } from "@gradio/statustracker";
 
-	export let is_running: boolean;
-	export let endpoint_returns: any;
-	export let js_returns: any;
-	export let current_language: "python" | "javascript" | "bash" | "mcp";
+	let {
+		is_running,
+		endpoint_returns,
+		js_returns,
+		current_language
+	}: {
+		is_running: boolean;
+		endpoint_returns: any;
+		js_returns: any;
+		current_language:
+			| "python"
+			| "javascript"
+			| "bash"
+			| "skill"
+			| "mcp"
+			| "cli";
+	} = $props();
 </script>
 
 <h4>
@@ -12,9 +25,13 @@
 		<div class="toggle-dot toggle-right" />
 	</div>
 	Returns {#if endpoint_returns.length > 1}
-		{current_language == "python" ? "tuple" : "list"} of {endpoint_returns.length}
+		{current_language == "python"
+			? "tuple"
+			: current_language == "bash"
+				? "array"
+				: "list"} of {endpoint_returns.length}
 		elements{:else}
-		1 element{/if}
+		{current_language == "bash" ? "an array of " : ""}1 element{/if}
 </h4>
 
 <div class:hide={is_running}>
@@ -26,7 +43,7 @@
 					<span class="code">[{i}]</span>
 				{/if}
 				<span class="code highlight"
-					>{#if current_language === "python"}{python_type.type}{:else}{js_returns[
+					>{#if current_language === "python"}{python_type.type}{:else if current_language === "bash"}{python_type.type}{:else}{js_returns[
 							i
 						].type}{/if}</span
 				>

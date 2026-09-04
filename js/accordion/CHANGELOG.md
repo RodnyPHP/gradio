@@ -1,5 +1,120 @@
 # @gradio/accordion
 
+## 0.6.0
+
+### Features
+
+- [#13329](https://github.com/gradio-app/gradio/pull/13329) [`7ac583a`](https://github.com/gradio-app/gradio/commit/7ac583a38a4c995d172033ff6e3700390201ff21) - Make builds go zoom zoom.  Thanks @pngwn!
+
+### Dependency updates
+
+- @gradio/utils@0.14.0
+- @gradio/atoms@0.26.1
+- @gradio/statustracker@0.15.2
+- @gradio/column@0.4.1
+
+## 0.5.39
+
+### Dependency updates
+
+- @gradio/statustracker@0.15.1
+- @gradio/atoms@0.26.0
+
+## 0.5.38
+
+### Dependency updates
+
+- @gradio/atoms@0.25.0
+- @gradio/statustracker@0.15.0
+- @gradio/utils@0.13.0
+- @gradio/column@0.4.0
+
+## 0.5.37
+
+### Fixes
+
+- [#13523](https://github.com/gradio-app/gradio/pull/13523) [`1b611f8`](https://github.com/gradio-app/gradio/commit/1b611f89fb85016a7879020098bd0faedf80ae5e) - Fixes grouped accordion borders and empty plot legends.  Thanks @dawoodkhan82!
+
+## 0.5.36
+
+### Dependency updates
+
+- @gradio/atoms@0.24.0
+- @gradio/statustracker@0.14.1
+
+## 0.5.35
+
+### Dependency updates
+
+- @gradio/atoms@0.23.1
+- @gradio/statustracker@0.14.0
+- @gradio/column@0.3.3
+
+## 0.5.34
+
+### Fixes
+
+- [#13183](https://github.com/gradio-app/gradio/pull/13183) [`1bf9bae`](https://github.com/gradio-app/gradio/commit/1bf9bae723475ad664f7d3d32596856c4881e63d) - Ensure the Accordion's `expand` and `collapse` events fire when toggled from python.  Thanks @pngwn!
+
+### Dependency updates
+
+- @gradio/utils@0.12.2
+- @gradio/atoms@0.23.0
+- @gradio/statustracker@0.13.1
+
+## 0.5.33
+
+### Dependency updates
+
+- @gradio/utils@0.12.1
+- @gradio/statustracker@0.13.0
+- @gradio/column@0.3.2
+
+## 0.5.32
+
+### Fixes
+
+- [#12836](https://github.com/gradio-app/gradio/pull/12836) [`77e7871`](https://github.com/gradio-app/gradio/commit/77e7871176e50a894190ac98aa9de8fbdbf3620f) - Fixes hidden accordion's children losing all values.  Thanks @aliabid94!
+
+### Dependency updates
+
+- @gradio/statustracker@0.12.5
+- @gradio/utils@0.12.0
+- @gradio/column@0.3.2
+- @gradio/atoms@0.22.2
+
+## 0.5.31
+
+### Fixes
+
+- [#12846](https://github.com/gradio-app/gradio/pull/12846) [`226daba`](https://github.com/gradio-app/gradio/commit/226daba5f65257244efc7c310500ea5366b20a87) - Fix bug where children of accordions dont get rendered when they are opened programmatically.  Thanks @freddyaboulton!
+
+### Dependency updates
+
+- @gradio/utils@0.11.3
+- @gradio/atoms@0.22.0
+- @gradio/statustracker@0.12.4
+
+## 0.5.30
+
+### Dependency updates
+
+- @gradio/atoms@0.21.0
+- @gradio/statustracker@0.12.3
+
+## 0.5.29
+
+### Fixes
+
+- [#12800](https://github.com/gradio-app/gradio/pull/12800) [`7a1c321`](https://github.com/gradio-app/gradio/commit/7a1c321b6546ba05a353488f5133e8262c4a8a39) - Bump svelte/kit for security reasons.  Thanks @freddyaboulton!
+
+### Dependency updates
+
+- @gradio/statustracker@0.12.2
+- @gradio/atoms@0.20.1
+- @gradio/column@0.3.2
+- @gradio/utils@0.11.2
+
 ## 0.5.28
 
 ### Fixes

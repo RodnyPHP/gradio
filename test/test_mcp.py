@@ -139,6 +139,46 @@ def test_simplify_filedata_schema(test_mcp_app):
     assert test_schema == old_schema
 
 
+def test_input_schema_marks_parameters_without_defaults_as_required():
+    with gr.Blocks() as demo:
+
+        @gr.api
+        def mixed(a: str, b: int = 3, c: str | None = None) -> str:
+            return a
+
+        @gr.api
+        def multiple_required(a: str, b: int, c: bool = False) -> str:
+            return a
+
+        @gr.api
+        def all_optional(a: int = 1) -> int:
+            return a
+
+        no_default = gr.Textbox(label="No Default")
+        with_default = gr.Textbox("hello", label="With Default")
+        output = gr.Textbox()
+
+        def concat(first: str, second: str) -> str:
+            return first + second
+
+        gr.Button().click(concat, [no_default, with_default], output)
+
+    server = GradioMCPServer(demo)
+
+    schema, _ = server.get_input_schema("mixed")
+    assert schema["required"] == ["a"]
+
+    schema, _ = server.get_input_schema("multiple_required")
+    assert schema["required"] == ["a", "b"]
+
+    # A component with an initial value counts as a default for its parameter.
+    schema, _ = server.get_input_schema("concat")
+    assert schema["required"] == ["first"]
+
+    schema, _ = server.get_input_schema("all_optional")
+    assert "required" not in schema
+
+
 def test_tool_prefix_character_replacement(test_mcp_app):
     test_cases = [
         ("test-space", "test_space_test_tool"),
@@ -354,8 +394,8 @@ async def test_mcp_streamable_http_client_with_stateful_app(stateful_mcp_app):
                 await session.initialize()
 
                 tools_response = await session.list_tools()
-                assert len(tools_response.tools) == 1
-                tool = tools_response.tools[0]
+                assert len(tools_response.tools) == 2
+                tool, tool_nq = tools_response.tools
 
                 result = await session.call_tool(
                     tool.name,
@@ -365,6 +405,24 @@ async def test_mcp_streamable_http_client_with_stateful_app(stateful_mcp_app):
                 assert (
                     result.content[0].text  # type: ignore
                     == "name=test, hidden_state=hidden_value, flag=True, gallery=42"
+                )
+                result = await session.call_tool(
+                    tool_nq.name,
+                    arguments={"name": "test_2", "flag": True, "gallery_images": 42},
+                )
+                assert len(result.content) == 1  # type: ignore
+                assert (
+                    result.content[0].text  # type: ignore
+                    == "name=test_2, hidden_state=hidden_value, flag=True, gallery=42"
+                )
+                result = await session.call_tool(
+                    tool_nq.name,
+                    arguments={"name": "test_3", "flag": True, "gallery_images": 44},
+                )
+                assert len(result.content) == 1  # type: ignore
+                assert (
+                    result.content[0].text  # type: ignore
+                    == "name=test_3, hidden_state=hidden_value, flag=True, gallery=44"
                 )
     finally:
         stateful_mcp_app.close()
@@ -399,3 +457,46 @@ async def test_x_gradio_user_mcp_gets_set():
                 )
     finally:
         app.close()
+
+
+@pytest.mark.asyncio
+async def test_mcp_browser_get_returns_landing_page():
+    def test_tool(x):
+        return x
+
+    demo = gr.Interface(test_tool, "text", "text")
+    server = GradioMCPServer(demo)
+
+    messages = []
+
+    async def receive():
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(message):
+        messages.append(message)
+
+    # A browser GET does not accept the SSE stream the MCP transport requires.
+    scope = {
+        "type": "http",
+        "method": "GET",
+        "path": "/gradio_api/mcp",
+        "scheme": "http",
+        "headers": [(b"accept", b"text/html"), (b"host", b"example.com")],
+        "query_string": b"",
+    }
+    await server.handle_streamable_http(scope, receive, send)
+
+    start = next(m for m in messages if m["type"] == "http.response.start")
+    body = b"".join(
+        m.get("body", b"") for m in messages if m["type"] == "http.response.body"
+    )
+    assert start["status"] == 200
+    assert any(
+        key.lower() == b"content-type" and b"text/html" in value
+        for key, value in start["headers"]
+    )
+    assert b"Model Context Protocol" in body
+    # The reconstructed server URL is surfaced on the page, along with
+    # connection snippets for common MCP clients.
+    assert b"example.com/gradio_api/mcp/" in body
+    assert b"Connect your AI assistant" in body

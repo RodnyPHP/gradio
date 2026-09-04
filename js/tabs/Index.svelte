@@ -1,4 +1,4 @@
-<script context="module" lang="ts">
+<script module lang="ts">
 	export { default as BaseTabs, TABS, type Tab } from "./shared/Tabs.svelte";
 </script>
 
@@ -7,25 +7,33 @@
 	import Tabs from "./shared/Tabs.svelte";
 	import Walkthrough from "./shared/Walkthrough.svelte";
 	import type { TabsProps, TabsEvents } from "./types";
+	import { tick, untrack } from "svelte";
 
 	let props = $props();
 	const gradio = new Gradio<TabsEvents, TabsProps>(props);
 
-	let old_selected = $state(gradio.props.selected);
+	let old_selected = gradio.props.selected;
 
 	$effect(() => {
-		if (old_selected !== gradio.props.selected) {
-			const i = gradio.props.initial_tabs.findIndex(
-				(t) => t.id === gradio.props.selected
-			);
+		const selected = gradio.props.selected;
+		// Only dispatch on an actual change; otherwise a single set_data can
+		// re-run this effect and fire gradio_tab_select more than once (and we
+		// don't want a select event on initial mount).
+		if (old_selected === selected) return;
+		old_selected = selected;
+
+		const initial_tabs = untrack(() => gradio.props.initial_tabs);
+		tick().then(() => {
+			const i = initial_tabs.findIndex((t) => t.id === selected);
+			if (i === -1) return;
+
 			gradio.dispatch("gradio_tab_select", {
-				value: gradio.props.initial_tabs[i].label,
+				value: initial_tabs[i].label,
 				index: i,
-				id: gradio.props.initial_tabs[i].id,
-				component_id: gradio.props.initial_tabs[i].component_id
+				id: initial_tabs[i].id,
+				component_id: initial_tabs[i].component_id
 			});
-			old_selected = gradio.props.selected;
-		}
+		});
 	});
 </script>
 
@@ -35,14 +43,14 @@
 		elem_id={gradio.shared.elem_id}
 		elem_classes={gradio.shared.elem_classes}
 		bind:selected={gradio.props.selected}
-		on:change={() => gradio.dispatch("change")}
-		on:select={(e) => {
-			gradio.dispatch("select", e.detail);
-			gradio.dispatch("gradio_tab_select", e.detail);
+		onchange={() => gradio.dispatch("change")}
+		onselect={(data) => {
+			gradio.dispatch("select", data);
+			gradio.dispatch("gradio_tab_select", data);
 		}}
 		initial_tabs={gradio.props.initial_tabs}
 	>
-		<slot />
+		{@render props.children?.()}
 	</Walkthrough>
 {:else}
 	<Tabs
@@ -50,13 +58,13 @@
 		elem_id={gradio.shared.elem_id}
 		elem_classes={gradio.shared.elem_classes}
 		bind:selected={gradio.props.selected}
-		on:change={() => gradio.dispatch("change")}
-		on:select={(e) => {
-			gradio.dispatch("select", e.detail);
-			gradio.dispatch("gradio_tab_select", e.detail);
+		onchange={() => gradio.dispatch("change")}
+		onselect={(data) => {
+			gradio.dispatch("select", data);
+			gradio.dispatch("gradio_tab_select", data);
 		}}
 		initial_tabs={gradio.props.initial_tabs}
 	>
-		<slot />
+		{@render props.children?.()}
 	</Tabs>
 {/if}

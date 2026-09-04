@@ -1,4 +1,4 @@
-<script context="module" lang="ts">
+<script module lang="ts">
 	export { default as BaseLabel } from "./shared/Label.svelte";
 </script>
 
@@ -9,19 +9,14 @@
 	import { LineChart as LabelIcon } from "@gradio/icons";
 	import { Block, BlockLabel, Empty, IconButtonWrapper } from "@gradio/atoms";
 	import { StatusTracker } from "@gradio/statustracker";
+	import type { SelectData } from "@gradio/utils";
 
 	const props = $props();
 	const gradio = new Gradio<LabelEvents, LabelProps>(props);
 
-	let old_value = $state(gradio.props.value);
 	let _label = $derived(gradio.props.value.label);
 
-	$effect(() => {
-		if (old_value != gradio.props.value) {
-			old_value = gradio.props.value;
-			gradio.dispatch("change");
-		}
-	});
+	gradio.watch_for_change();
 </script>
 
 <Block
@@ -59,7 +54,7 @@
 	{/if}
 	{#if _label !== undefined && _label !== null}
 		<Label
-			on:select={({ detail }) => gradio.dispatch("select", detail)}
+			onselect={(detail: SelectData) => gradio.dispatch("select", detail)}
 			selectable={gradio.props._selectable}
 			value={gradio.props.value}
 			color={gradio.props.color}

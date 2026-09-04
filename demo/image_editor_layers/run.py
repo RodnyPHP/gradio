@@ -14,6 +14,7 @@ with gr.Blocks() as demo:
         im = gr.ImageEditor(
             type="numpy",
             interactive=True,
+            transforms=("crop",),
         )
         im_preview = gr.ImageEditor(
             interactive=True,
@@ -71,7 +72,7 @@ with gr.Blocks() as demo:
 
     gr.Examples(
         examples=[
-            "https://huggingface.co/datasets/freddyaboulton/bucket/resolve/main/TheCheethcat.jpg",
+            str(dir_ / "cheetah.jpg"),
             {
                 "background": str(dir_ / "cheetah.jpg"),
                 "layers": [str(dir_ / "layer1.png")],

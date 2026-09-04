@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { StatusTracker } from "@gradio/statustracker";
-	import type { LoadingStatus } from "@gradio/statustracker";
+	import type { ILoadingStatus as LoadingStatus } from "@gradio/statustracker";
 	import { Gradio } from "@gradio/utils";
 
 	// export let equal_height = true;
@@ -68,7 +68,7 @@
 				: null}
 		/>
 	{/if}
-	<slot />
+	{@render props.children?.()}
 </div>
 
 <style>

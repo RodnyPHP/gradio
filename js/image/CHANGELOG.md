@@ -1,5 +1,176 @@
 # @gradio/image
 
+## 0.28.2
+
+### Dependency updates
+
+- @gradio/client@2.5.1
+
+## 0.28.2
+
+### Fixes
+
+- [#13764](https://github.com/gradio-app/gradio/pull/13764) [`fb02661`](https://github.com/gradio-app/gradio/commit/fb0266119af98eae52e8abcab735d643254ad0d4) - Fix mobile image-related issues.  Thanks @abidlabs!
+
+## 0.28.1
+
+### Dependency updates
+
+- @gradio/client@2.5.0
+
+## 0.28.1
+
+### Dependency updates
+
+- @gradio/client@2.4.0
+- @gradio/utils@0.14.0
+- @gradio/atoms@0.26.1
+- @gradio/statustracker@0.15.2
+- @gradio/upload@0.18.2
+
+## 0.28.0
+
+### Features
+
+- [#13543](https://github.com/gradio-app/gradio/pull/13543) [`0533483`](https://github.com/gradio-app/gradio/commit/0533483bccdee38f334a598f18297e8c02966343) - Migrate Image components to Svelte 5.  Thanks @dawoodkhan82!
+
+### Dependency updates
+
+- @gradio/statustracker@0.15.1
+- @gradio/icons@0.16.0
+- @gradio/atoms@0.26.0
+- @gradio/client@2.3.1
+- @gradio/upload@0.18.1
+
+## 0.27.0
+
+### Features
+
+- [#13526](https://github.com/gradio-app/gradio/pull/13526) [`53cb4ca`](https://github.com/gradio-app/gradio/commit/53cb4cae1ec3521e9170d12867253516413ba37a) - Run `pnpm lint` and `pnpm ts:check` on CI.  Thanks @abidlabs!
+
+### Fixes
+
+- [#13532](https://github.com/gradio-app/gradio/pull/13532) [`0a933b4`](https://github.com/gradio-app/gradio/commit/0a933b428f5b2158cb8c764f38abf0da2312d58a) - Fix `gr.SelectData` coordinates when the image in `gr.Image` does not fill its container.  Thanks @hysts!
+- [#13533](https://github.com/gradio-app/gradio/pull/13533) [`e5ec1ca`](https://github.com/gradio-app/gradio/commit/e5ec1ca66c45e7e3a057b75ac2b8b86660b2827b) - Fix fullscreen button not working in ImageSlider, interactive Image, native plots, and AnnotatedImage.  Thanks @hysts!
+
+### Dependency updates
+
+- @gradio/atoms@0.25.0
+- @gradio/statustracker@0.15.0
+- @gradio/utils@0.13.0
+- @gradio/client@2.3.0
+- @gradio/upload@0.18.0
+
+## 0.26.3
+
+### Dependency updates
+
+- @gradio/client@2.2.2
+
+## 0.26.3
+
+### Dependency updates
+
+- @gradio/client@2.2.1
+- @gradio/upload@0.17.10
+
+## 0.26.3
+
+### Dependency updates
+
+- @gradio/atoms@0.24.0
+- @gradio/statustracker@0.14.1
+- @gradio/upload@0.17.9
+
+## 0.26.2
+
+### Fixes
+
+- [#13181](https://github.com/gradio-app/gradio/pull/13181) [`755c3d3`](https://github.com/gradio-app/gradio/commit/755c3d32c388a36d2296f8d895c5c0e1144fb54f) - fix: show validation errors on StatusTracker-dependent components.  Thanks @hysts!
+
+### Dependency updates
+
+- @gradio/atoms@0.23.1
+- @gradio/statustracker@0.14.0
+- @gradio/client@2.2.0
+
+## 0.26.1
+
+### Fixes
+
+- [#13165](https://github.com/gradio-app/gradio/pull/13165) [`1a0e277`](https://github.com/gradio-app/gradio/commit/1a0e2770067789ba6ec5646e473e1df183cd7183) - Use test utils.  Thanks @freddyaboulton!
+
+### Dependency updates
+
+- @gradio/utils@0.12.2
+- @gradio/atoms@0.23.0
+- @gradio/statustracker@0.13.1
+- @gradio/upload@0.17.8
+
+## 0.26.0
+
+### Features
+
+- [#12998](https://github.com/gradio-app/gradio/pull/12998) [`d5e1b8f`](https://github.com/gradio-app/gradio/commit/d5e1b8f6cb7473b70fc8c082589996d5e0402810) - use a real browser environment for unit tests.  Thanks @pngwn!
+
+### Fixes
+
+- [#13004](https://github.com/gradio-app/gradio/pull/13004) [`73d4065`](https://github.com/gradio-app/gradio/commit/73d4065db6a75961693fad60dd26e8dbaa2a56d1) - fix(image): pass onclick to FullscreenButton in ImagePreview.  Thanks @galleon!
+
+### Dependency updates
+
+- @gradio/utils@0.12.1
+- @gradio/statustracker@0.13.0
+
+## 0.25.4
+
+### Dependency updates
+
+- @gradio/statustracker@0.12.5
+- @gradio/utils@0.12.0
+- @gradio/atoms@0.22.2
+- @gradio/upload@0.17.7
+
+## 0.25.3
+
+### Dependency updates
+
+- @gradio/client@2.1.0
+
+## 0.25.3
+
+### Dependency updates
+
+- @gradio/utils@0.11.3
+- @gradio/atoms@0.22.0
+- @gradio/statustracker@0.12.4
+- @gradio/upload@0.17.6
+
+## 0.25.2
+
+### Dependency updates
+
+- @gradio/atoms@0.21.0
+- @gradio/client@2.0.4
+- @gradio/statustracker@0.12.3
+- @gradio/upload@0.17.5
+
+## 0.25.1
+
+### Fixes
+
+- [#12800](https://github.com/gradio-app/gradio/pull/12800) [`7a1c321`](https://github.com/gradio-app/gradio/commit/7a1c321b6546ba05a353488f5133e8262c4a8a39) - Bump svelte/kit for security reasons.  Thanks @freddyaboulton!
+- [#12779](https://github.com/gradio-app/gradio/pull/12779) [`ea2d3e9`](https://github.com/gradio-app/gradio/commit/ea2d3e985a8b42d188e551f517c5825c00790628) - Migrate Audio + Upload + Atoms to Svelte 5.  Thanks @dawoodkhan82!
+
+### Dependency updates
+
+- @gradio/statustracker@0.12.2
+- @gradio/atoms@0.20.1
+- @gradio/utils@0.11.2
+- @gradio/icons@0.15.1
+- @gradio/upload@0.17.4
+- @gradio/client@2.0.3
+
 ## 0.25.0
 
 ### Dependency updates

@@ -6,18 +6,27 @@
 	import IconHuggingChat from "./icons/IconHuggingChat.svelte";
 
 	import { tick } from "svelte";
+	import { cleanGuideHtml } from "$lib/utils/clean-guide-html";
 
-	export let markdown_content: string = "";
+	let {
+		markdown_content = ""
+	}: {
+		markdown_content?: string;
+	} = $props();
+
+	let cleaned_content = "";
+	$effect(() => {
+		cleanGuideHtml(markdown_content).then((c) => (cleaned_content = c));
+	});
 
 	let label = `Copy Page as Markdown for LLMs`;
 
-	let copied = false;
-	$: copied;
+	let copied = $state(false);
 
-	let open = false;
+	let open = $state(false);
 	let triggerEl: HTMLDivElement | null = null;
-	let menuEl: HTMLDivElement | null = null;
-	let menuStyle = "";
+	let menuEl: HTMLDivElement | null = $state(null);
+	let menuStyle = $state("");
 
 	const isClient = typeof window !== "undefined";
 
@@ -46,7 +55,7 @@
 	function buildUrl(): string {
 		const encodedPromptText = encodeURIComponent(
 			`--------------------------------
-${markdown_content}
+${cleaned_content}
 --------------------------------
 
 Read the documentation above so I can ask questions about it.`
@@ -86,7 +95,7 @@ Read the documentation above so I can ask questions about it.`
 
 	async function copyMarkdown(): Promise<void> {
 		try {
-			if (!markdown_content) {
+			if (!cleaned_content) {
 				console.warn("Nothing to copy");
 				return;
 			}
@@ -97,7 +106,7 @@ Read the documentation above so I can ask questions about it.`
 				typeof navigator.clipboard.writeText === "function";
 
 			if (hasNavigatorClipboard) {
-				await navigator.clipboard.writeText(markdown_content);
+				await navigator.clipboard.writeText(cleaned_content);
 			} else {
 				console.warn("Clipboard API unavailable");
 				return;
@@ -114,16 +123,16 @@ Read the documentation above so I can ask questions about it.`
 </script>
 
 <svelte:window
-	on:mousedown={handleWindowPointer}
-	on:keydown={handleWindowKeydown}
-	on:resize={handleWindowResize}
-	on:scroll={handleWindowScroll}
+	onmousedown={handleWindowPointer}
+	onkeydown={handleWindowKeydown}
+	onresize={handleWindowResize}
+	onscroll={handleWindowScroll}
 />
 
 <div class="container-wrapper">
 	<div bind:this={triggerEl} class="trigger-wrapper">
 		<button
-			on:click={() => copyMarkdown()}
+			onclick={() => copyMarkdown()}
 			class="copy-button"
 			aria-live="polite"
 		>
@@ -137,7 +146,7 @@ Read the documentation above so I can ask questions about it.`
 			<span>{copied ? `Copied Page!` : "Copy Page"}</span>
 		</button>
 		<button
-			on:click={toggleMenu}
+			onclick={toggleMenu}
 			class="menu-toggle-button"
 			aria-haspopup="menu"
 			aria-expanded={open}
@@ -154,7 +163,7 @@ Read the documentation above so I can ask questions about it.`
 			class="backdrop-overlay"
 			aria-hidden="true"
 			style="background: transparent;"
-			on:click={closeMenu}
+			onclick={closeMenu}
 		></div>
 		<div
 			bind:this={menuEl}
@@ -165,7 +174,7 @@ Read the documentation above so I can ask questions about it.`
 		>
 			<button
 				role="menuitem"
-				on:click={() => {
+				onclick={() => {
 					copyMarkdown();
 					closeMenu();
 				}}
@@ -184,7 +193,7 @@ Read the documentation above so I can ask questions about it.`
 
 			<button
 				role="menuitem"
-				on:click={() => {
+				onclick={() => {
 					openHuggingChat();
 					closeMenu();
 				}}

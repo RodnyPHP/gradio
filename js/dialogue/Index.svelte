@@ -1,6 +1,4 @@
-<svelte:options accessors={true} />
-
-<script context="module" lang="ts">
+<script module lang="ts">
 	export { default as BaseDialogue } from "./Dialogue.svelte";
 	export { default as BaseExample } from "./Example.svelte";
 </script>
@@ -14,6 +12,24 @@
 
 	const props = $props();
 	const gradio = new Gradio<DialogueEvents, DialogueProps>(props);
+
+	let mounted = $state(false);
+	let old_value = gradio.props.value;
+
+	$effect(() => {
+		if (!mounted) {
+			// @ts-ignore
+			old_value = gradio.props.value;
+			mounted = true;
+		}
+		// @ts-ignore
+		if (JSON.stringify(old_value) != JSON.stringify(gradio.props.value)) {
+			// @ts-ignore
+			old_value = gradio.props.value;
+			// @ts-ignore
+			gradio.dispatch("change");
+		}
+	});
 </script>
 
 <Block

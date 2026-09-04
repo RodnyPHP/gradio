@@ -17,9 +17,8 @@ from functools import lru_cache, wraps
 from io import BytesIO
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeVar
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
-import aiofiles
 import httpx
 import numpy as np
 import safehttpx as sh
@@ -27,9 +26,12 @@ from gradio_client import utils as client_utils
 from PIL import Image, ImageOps, ImageSequence, PngImagePlugin
 
 from gradio import utils
+from gradio._vendor import aiofiles
+from gradio._vendor.ffmpy import FFmpeg, FFprobe, FFRuntimeError
 from gradio.context import LocalContext
 from gradio.data_classes import FileData, GradioModel, GradioRootModel, JsonData
 from gradio.exceptions import Error, InvalidPathError
+from gradio.profiling import traced_sync
 from gradio.route_utils import API_PREFIX
 from gradio.utils import abspath, get_hash_seed, get_upload_folder, is_in_or_equal
 
@@ -155,6 +157,7 @@ def hash_base64(base64_encoding: str, chunk_num_blocks: int = 128) -> str:
     return sha.hexdigest()
 
 
+@traced_sync("postprocess_save_pil_to_cache")
 def save_pil_to_cache(
     img: Image.Image,
     cache_dir: str,
@@ -169,6 +172,7 @@ def save_pil_to_cache(
     return filename
 
 
+@traced_sync("postprocess_save_img_array_to_cache")
 def save_img_array_to_cache(
     arr: np.ndarray, cache_dir: str, format: str = "webp"
 ) -> str:
@@ -176,10 +180,22 @@ def save_img_array_to_cache(
     return save_pil_to_cache(pil_image, cache_dir, format=format)
 
 
+@traced_sync("postprocess_save_audio_to_cache")
 def save_audio_to_cache(
     data: np.ndarray, sample_rate: int, format: str, cache_dir: str
 ) -> str:
-    temp_dir = Path(cache_dir) / hash_bytes(data.tobytes())
+    audio_metadata = {
+        "cache_schema": "audio-cache-v1",
+        "dtype": str(data.dtype),
+        "format": format,
+        "sample_rate": int(sample_rate),
+        "shape": data.shape,
+    }
+    audio_hash = hashlib.sha256()
+    audio_hash.update(hash_seed)
+    audio_hash.update(json.dumps(audio_metadata, sort_keys=True).encode("utf-8"))
+    audio_hash.update(data.tobytes())
+    temp_dir = Path(cache_dir) / audio_hash.hexdigest()
     temp_dir.mkdir(exist_ok=True, parents=True)
     filename = str((temp_dir / f"audio.{format}").resolve())
     audio_to_file(sample_rate, data, filename, format=format)
@@ -207,6 +223,7 @@ def detect_audio_format(data: bytes) -> str:
     return ""
 
 
+@traced_sync("postprocess_save_bytes_to_cache")
 def save_bytes_to_cache(data: bytes, file_name: str, cache_dir: str) -> str:
     path = Path(cache_dir) / hash_bytes(data)
     path.mkdir(exist_ok=True, parents=True)
@@ -218,6 +235,7 @@ def save_bytes_to_cache(data: bytes, file_name: str, cache_dir: str) -> str:
     return str(path.resolve())
 
 
+@traced_sync("save_file_to_cache")
 def save_file_to_cache(file_path: str | Path, cache_dir: str) -> str:
     """Returns a temporary file path for a copy of the given file path if it does
     not already exist. Otherwise returns the path to the existing temp file."""
@@ -277,6 +295,31 @@ def lru_cache_async(maxsize: int = 128):
     return decorator
 
 
+MAX_REDIRECTS = 20
+
+
+async def async_ssrf_protected_get(url: str) -> httpx.Response:
+    """SSRF-protected GET: routes through `safehttpx` with the public hostname
+    allow-list and re-validates each redirect. Returns the `httpx.Response`
+    without raising on non-2xx status (callers decide how to handle that)."""
+    response = await sh.get(
+        url, domain_whitelist=PUBLIC_HOSTNAME_WHITELIST, _transport=async_transport
+    )
+    redirects = 0
+    while response.has_redirect_location:
+        if redirects >= MAX_REDIRECTS:
+            raise Exception(f"Exceeded maximum of {MAX_REDIRECTS} redirects.")
+        redirects += 1
+        # Resolve the Location against the URL that produced this redirect, so
+        # relative/scheme-relative redirects and host changes across hops are
+        # handled per RFC 3986. safehttpx re-validates the resolved host.
+        url = urljoin(str(response.url), response.headers["Location"])
+        response = await sh.get(
+            url, domain_whitelist=PUBLIC_HOSTNAME_WHITELIST, _transport=async_transport
+        )
+    return response
+
+
 async def async_ssrf_protected_download(url: str, cache_dir: str) -> str:
     temp_dir = Path(cache_dir) / hash_url(url)
     temp_dir.mkdir(exist_ok=True, parents=True)
@@ -291,23 +334,7 @@ async def async_ssrf_protected_download(url: str, cache_dir: str) -> str:
     if Path(full_temp_file_path).exists():
         return full_temp_file_path
 
-    hostname = parsed_url.hostname
-    response = await sh.get(
-        url, domain_whitelist=PUBLIC_HOSTNAME_WHITELIST, _transport=async_transport
-    )
-
-    while response.is_redirect:
-        redirect_url = response.headers["Location"]
-        redirect_parsed = urlparse(redirect_url)
-
-        if not redirect_parsed.hostname:
-            redirect_url = f"{parsed_url.scheme}://{hostname}{redirect_url}"
-
-        response = await sh.get(
-            redirect_url,
-            domain_whitelist=PUBLIC_HOSTNAME_WHITELIST,
-            _transport=async_transport,
-        )
+    response = await async_ssrf_protected_get(url)
     if response.status_code != 200:
         raise Exception(f"Failed to download file. Status code: {response.status_code}")
 
@@ -457,13 +484,14 @@ def move_files_to_cache(
         )
         if block.proxy_url:
             proxy_url = block.proxy_url.rstrip("/")
-            url = f"{API_PREFIX}/proxy={proxy_url}{url_prefix}{payload.path}"
+            encoded_path = client_utils.encode_file_path(payload.path)
+            url = f"{API_PREFIX}/proxy={proxy_url}{url_prefix}{encoded_path}"
         elif client_utils.is_http_url_like(payload.path) or payload.path.startswith(
             f"{url_prefix}"
         ):
             url = f"{payload.path}"
         else:
-            url = f"{url_prefix}{payload.path}"
+            url = f"{url_prefix}{client_utils.encode_file_path(payload.path)}"
         payload.url = url
         _mark_svg_as_safe(payload)
         return payload.model_dump()
@@ -579,13 +607,14 @@ async def async_move_files_to_cache(
         )
         if block.proxy_url:
             proxy_url = block.proxy_url.rstrip("/")
-            url = f"{API_PREFIX}/proxy={proxy_url}{url_prefix}{payload.path}"
+            encoded_path = client_utils.encode_file_path(payload.path)
+            url = f"{API_PREFIX}/proxy={proxy_url}{url_prefix}{encoded_path}"
         elif client_utils.is_http_url_like(payload.path) or payload.path.startswith(
             f"{url_prefix}"
         ):
             url = payload.path
         else:
-            url = f"{url_prefix}{payload.path}"
+            url = f"{url_prefix}{client_utils.encode_file_path(payload.path)}"
         payload.url = url
         _mark_svg_as_safe(payload)
         return payload.model_dump()
@@ -644,33 +673,42 @@ def resize_and_crop(img, size, crop_type="center"):
 def audio_from_file(
     filename: str, crop_min: float = 0, crop_max: float = 100
 ) -> tuple[int, np.ndarray]:
-    try:
-        audio = AudioSegment.from_file(filename)
-    except FileNotFoundError as e:
-        isfile = Path(filename).is_file()
-        msg = (
-            f"Cannot load audio from file: `{'ffprobe' if isfile else filename}` not found."
-            + " Please install `ffmpeg` in your system to use non-WAV audio file formats"
-            " and make sure `ffprobe` is in your PATH."
-            if isfile
-            else ""
-        )
-        raise RuntimeError(msg) from e
-    except OSError as e:
-        raise e
-    if crop_min != 0 or crop_max != 100:
-        audio_start = len(audio) * crop_min / 100
-        audio_end = len(audio) * crop_max / 100
-        audio = audio[audio_start:audio_end]
-    data = np.array(audio.get_array_of_samples())
-    if audio.channels > 1:
-        data = data.reshape(-1, audio.channels)
-    return audio.frame_rate, data
+    from gradio.profiling import trace_phase_sync
+
+    with trace_phase_sync("preprocess_audio_from_file"):
+        try:
+            audio = AudioSegment.from_file(filename)
+        except FileNotFoundError as e:
+            isfile = Path(filename).is_file()
+            msg = (
+                f"Cannot load audio from file: `{'ffprobe' if isfile else filename}` not found."
+                + " Please install `ffmpeg` in your system to use non-WAV audio file formats"
+                " and make sure `ffprobe` is in your PATH."
+                if isfile
+                else ""
+            )
+            raise RuntimeError(msg) from e
+        except OSError as e:
+            raise e
+        if crop_min != 0 or crop_max != 100:
+            audio_start = len(audio) * crop_min / 100
+            audio_end = len(audio) * crop_max / 100
+            audio = audio[audio_start:audio_end]
+        data = np.array(audio.get_array_of_samples())
+        if audio.channels > 1:
+            data = data.reshape(-1, audio.channels)
+        return audio.frame_rate, data
 
 
 def audio_to_file(sample_rate, data, filename, format="wav"):
-    if format == "wav":
-        data = convert_to_16_bit_wav(data)
+    # pydub's `AudioSegment` raw constructor only supports integer PCM, and
+    # interprets `sample_width=4` as int32 rather than float32. Without an
+    # explicit conversion, non-WAV formats (mp3, flac, ogg, ...) end up
+    # feeding float32 bytes through ffmpeg as `pcm_s32le`, which decodes as
+    # noise. Run the same int16 conversion for every format so the encoded
+    # output matches the input waveform regardless of `format`. See #13364.
+    if data.dtype != np.int16:
+        data = convert_to_16_bit_audio(data)
 
     audio = AudioSegment(
         data.tobytes(),
@@ -682,14 +720,20 @@ def audio_to_file(sample_rate, data, filename, format="wav"):
     file.close()  # type: ignore
 
 
-def convert_to_16_bit_wav(data):
+def convert_to_16_bit_audio(data):
     # Based on: https://docs.scipy.org/doc/scipy/reference/generated/scipy.io.wavfile.write.html
     warning = "Trying to convert audio automatically from {} to 16-bit int format."
     if data.dtype in [np.float64, np.float32, np.float16]:
         warnings.warn(warning.format(data.dtype))
-        data = data / np.abs(data).max()
-        data = data * 32767
-        data = data.astype(np.int16)
+        peak = np.abs(data).max()
+        if peak == 0:
+            # Silence: avoid dividing by zero (which would produce NaNs that
+            # cast to nonzero int16 garbage and turn silence into noise).
+            data = np.zeros_like(data, dtype=np.int16)
+        else:
+            data = data / peak
+            data = data * 32767
+            data = data.astype(np.int16)
     elif data.dtype == np.int32:
         warnings.warn(warning.format(data.dtype))
         data = data / 65536
@@ -714,6 +758,12 @@ def convert_to_16_bit_wav(data):
             f"{data.dtype} to 16-bit int format."
         )
     return data
+
+
+# Backwards-compatible alias: this function now handles non-WAV formats too,
+# but it was previously named `convert_to_16_bit_wav` and may be imported by
+# external code.
+convert_to_16_bit_wav = convert_to_16_bit_audio
 
 
 ##################
@@ -1029,8 +1079,6 @@ def video_is_playable(video_filepath: str) -> bool:
         .webm -> vp9
         .ogg -> theora
     """
-    from ffmpy import FFprobe, FFRuntimeError
-
     try:
         container = Path(video_filepath).suffix.lower()
         probe = FFprobe(
@@ -1053,27 +1101,232 @@ def video_is_playable(video_filepath: str) -> bool:
         return True
 
 
-def convert_video_to_playable_mp4(video_path: str) -> str:
+# Container/codec pairs that browsers can decode. Anything outside this set has
+# to be converted before it will play back.
+PLAYABLE_AUDIO_CODECS = frozenset(
+    {
+        (".wav", "pcm_s16le"),
+        (".wav", "pcm_s24le"),
+        (".wav", "pcm_f32le"),
+        (".wav", "pcm_u8"),
+        (".mp3", "mp3"),
+        (".m4a", "aac"),
+        (".m4a", "alac"),
+        (".mp4", "aac"),
+        (".aac", "aac"),
+        (".flac", "flac"),
+        (".ogg", "vorbis"),
+        (".ogg", "opus"),
+        (".oga", "vorbis"),
+        (".oga", "opus"),
+        (".opus", "opus"),
+        (".weba", "opus"),
+        (".webm", "opus"),
+        (".webm", "vorbis"),
+    }
+)
+
+
+def audio_is_playable(audio_filepath: str) -> bool:
+    """Determines if an audio file is playable in the browser.
+
+    Audio is playable if it has a playable container and codec, e.g.
+        .wav -> pcm_s16le
+        .mp3 -> mp3
+        .m4a -> aac
+    Containers such as AIFF are not decodable by any major browser regardless of
+    the codec inside them.
+    """
+    try:
+        container = Path(audio_filepath).suffix.lower()
+        probe = FFprobe(
+            global_options="-show_format -show_streams -select_streams a -print_format json",
+            inputs={audio_filepath: None},
+        )
+        output = probe.run(stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+        output = json.loads(output[0])  # type: ignore
+        audio_codec = output["streams"][0]["codec_name"]
+        return (container, audio_codec) in PLAYABLE_AUDIO_CODECS
+    # If anything goes wrong, assume the audio can be played so that we do not
+    # convert downstream.
+    except (FFRuntimeError, IndexError, KeyError):
+        return True
+
+
+# Browser-playable codecs mapped to a container that can hold them, so a file
+# whose container is the only problem needs remuxing rather than re-encoding.
+# The pairs match the entries in `audio_is_playable`.
+REMUXABLE_AUDIO_CODECS = {
+    "aac": ".m4a",
+    "alac": ".m4a",
+    "mp3": ".mp3",
+    "flac": ".flac",
+    "opus": ".ogg",
+    "vorbis": ".ogg",
+}
+
+
+def _first_audio_codec(audio_path: str) -> str | None:
+    """Return the codec of a file's first audio stream, or None if unprobeable."""
+    try:
+        probe = FFprobe(
+            global_options="-show_streams -select_streams a -print_format json",
+            inputs={audio_path: None},
+        )
+        output = probe.run(stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+        return json.loads(output[0])["streams"][0]["codec_name"]  # type: ignore
+    except (FFRuntimeError, IndexError, KeyError, ValueError):
+        return None
+
+
+def convert_audio_to_playable(audio_path: str, cache_dir: str) -> str:
+    """Convert audio to a browser-playable file, returning the original on failure.
+
+    Unlike the video equivalent the output is written to the cache rather than
+    next to the source: `.aif` and `.wav` share a directory far more often than
+    the video containers do, so writing alongside would clobber the user's files.
+    """
+    temp_dir = Path(cache_dir) / hash_file(audio_path)
+    temp_dir.mkdir(exist_ok=True, parents=True)
+    stem = Path(audio_path).stem
+
+    def to_playable(output_path: Path, copy_streams: bool) -> None:
+        ff = FFmpeg(
+            inputs={str(audio_path): None},
+            # Only the first audio stream is carried over when copying: a
+            # Matroska file can hold cover art or subtitle streams that the
+            # target container would reject, failing the whole mux.
+            outputs={str(output_path): "-map 0:a:0 -c copy" if copy_streams else None},
+            global_options="-y -loglevel quiet",
+        )
+        ff.run()
+
+    # A container browsers cannot play often still holds a codec they can, in
+    # which case only the container has to change. Copying the stream is
+    # near-instant and lossless, where re-encoding to wav is slow and inflates
+    # a compressed file into raw PCM.
+    remux_suffix = REMUXABLE_AUDIO_CODECS.get(_first_audio_codec(audio_path) or "")
+    if remux_suffix:
+        remuxed_path = temp_dir / f"{stem}{remux_suffix}"
+        if remuxed_path.exists():
+            return str(remuxed_path)
+        try:
+            to_playable(remuxed_path, copy_streams=True)
+            return str(remuxed_path)
+        except FFRuntimeError:
+            # The stream turned out not to be muxable into that container after
+            # all; fall back to a full re-encode.
+            pass
+
+    output_path = temp_dir / f"{stem}.wav"
+    if output_path.exists():
+        return str(output_path)
+    try:
+        to_playable(output_path, copy_streams=False)
+    except FFRuntimeError as e:
+        print(f"Error converting audio to browser-playable format {str(e)}")
+        return str(audio_path)
+    return str(output_path)
+
+
+# Codecs that both fit in an mp4 container and are playable in browsers, so a
+# file holding them only needs remuxing rather than re-encoding. The video set
+# matches the mp4 entries in `video_is_playable`.
+MP4_COMPATIBLE_VIDEO_CODECS = frozenset({"h264", "av1"})
+MP4_COMPATIBLE_AUDIO_CODECS = frozenset({"aac", "mp3"})
+
+
+def _first_stream_codecs(video_path: str) -> tuple[str | None, str | None] | None:
+    """Return the first (video codec, audio codec) of a media file.
+
+    Either element is None when the file has no stream of that kind. Returns
+    None if the file could not be probed at all.
+    """
+    try:
+        probe = FFprobe(
+            global_options="-show_streams -print_format json",
+            inputs={video_path: None},
+        )
+        output = probe.run(stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+        streams = json.loads(output[0])["streams"]  # type: ignore
+    except (FFRuntimeError, IndexError, KeyError, ValueError):
+        return None
+    codecs: dict[str, str] = {}
+    for stream in streams:
+        codec_type = stream.get("codec_type")
+        if codec_type in ("video", "audio") and codec_type not in codecs:
+            codecs[codec_type] = stream.get("codec_name", "")
+    return codecs.get("video"), codecs.get("audio")
+
+
+def _can_remux_to_mp4(video_path: str) -> bool:
+    """Whether the file's streams can be copied into an mp4 as-is."""
+    codecs = _first_stream_codecs(video_path)
+    if codecs is None:
+        return False
+    video_codec, audio_codec = codecs
+    return video_codec in MP4_COMPATIBLE_VIDEO_CODECS and (
+        audio_codec is None or audio_codec in MP4_COMPATIBLE_AUDIO_CODECS
+    )
+
+
+def convert_video_to_playable_mp4(video_path: str, cache_dir: str | None = None) -> str:
     """Convert the video to mp4. If something goes wrong return the original video."""
-    from ffmpy import FFmpeg, FFRuntimeError
+
+    def to_mp4(output_path: Path, copy_streams: bool) -> None:
+        ff = FFmpeg(
+            inputs={video_path: None},
+            # Only the first video and audio stream are carried over when
+            # copying. A Matroska file can hold subtitle or attachment streams
+            # that an mp4 cannot, and those would fail the mux; it can also hold
+            # further audio tracks that `_can_remux_to_mp4` never checked. The
+            # `?` keeps audio optional so silent videos still work.
+            outputs={
+                str(output_path): "-map 0:v:0 -map 0:a:0? -c copy"
+                if copy_streams
+                else None
+            },
+            global_options="-y -loglevel quiet",
+        )
+        ff.run()
+
+    # A container that browsers cannot play (.mkv, say) often still holds
+    # streams they can, in which case only the container has to change. Copying
+    # the streams is near-instant and lossless, where a re-encode of a large
+    # file takes minutes and degrades quality (#13527).
+    can_remux = _can_remux_to_mp4(video_path)
+
+    # The result goes to a fresh directory rather than next to the source.
+    # `Path(video_path).with_suffix(".mp4")` overwrites an unrelated `clip.mp4`
+    # sitting beside `clip.mkv`, and for a non-playable `.mp4` it resolves to the
+    # input itself, rewriting the user's own file in place. Writing elsewhere
+    # also means the input no longer has to be copied aside first, which for a
+    # multi-gigabyte upload cost more than the remux it was protecting.
+    # `get_upload_folder()` only names the cache, it does not create it, and
+    # `mkdtemp` will not create missing parents.
+    cache_root = Path(cache_dir or get_upload_folder())
+    cache_root.mkdir(parents=True, exist_ok=True)
+    output_dir = Path(tempfile.mkdtemp(dir=cache_root))
+    output_path = output_dir / f"{Path(video_path).stem}.mp4"
 
     try:
-        with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
-            output_path = Path(video_path).with_suffix(".mp4")
-            shutil.copy2(video_path, tmp_file.name)
-            # ffmpeg will automatically use h264 codec (playable in browser) when converting to mp4
-            ff = FFmpeg(
-                inputs={str(tmp_file.name): None},
-                outputs={str(output_path): None},
-                global_options="-y -loglevel quiet",
-            )
-            ff.run()
+        if can_remux:
+            try:
+                to_mp4(output_path, copy_streams=True)
+                return str(output_path)
+            except FFRuntimeError:
+                # The streams turned out not to be muxable into an mp4
+                # after all; fall back to a full re-encode.
+                pass
+        # ffmpeg will automatically use h264 codec (playable in browser) when converting to mp4
+        to_mp4(output_path, copy_streams=False)
     except FFRuntimeError as e:
         print(f"Error converting video to browser-playable format {str(e)}")
-        output_path = video_path
-    finally:
-        # Remove temp file
-        os.remove(tmp_file.name)  # type: ignore
+        # The original is returned, so nothing will ever reference this
+        # directory or the partial file ffmpeg may have left in it, and the
+        # cache cleanup only tracks paths that were handed out.
+        shutil.rmtree(output_dir, ignore_errors=True)
+        return str(video_path)
     return str(output_path)
 
 

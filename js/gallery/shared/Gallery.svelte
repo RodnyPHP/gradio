@@ -7,22 +7,25 @@
 		IconButtonWrapper,
 		FullscreenButton
 	} from "@gradio/atoms";
-	import type { CustomButton as CustomButtonType } from "@gradio/utils";
+	import { type CustomButton as CustomButtonType } from "@gradio/utils";
 	import { ModifyUpload, Upload as UploadComponent } from "@gradio/upload";
-	import type { SelectData } from "@gradio/utils";
 	import { Image } from "@gradio/image/shared";
 	import { Video } from "@gradio/video/shared";
 	import { dequal } from "dequal";
-	import { createEventDispatcher, onMount } from "svelte";
+	import { onMount } from "svelte";
 	import { tick } from "svelte";
 	import type { GalleryImage, GalleryVideo } from "../types";
 
 	import {
 		Download,
+		DownloadAll,
 		Image as ImageIcon,
 		Clear,
 		Play,
-		Upload as UploadIcon
+		Upload as UploadIcon,
+		Webcam,
+		Video as VideoIcon,
+		ImagePaste
 	} from "@gradio/icons";
 	import { FileData } from "@gradio/client";
 	import type { Client } from "@gradio/client";
@@ -31,59 +34,95 @@
 
 	type GalleryData = GalleryImage | GalleryVideo;
 
-	export let show_label = true;
-	export let label: string;
-	export let value: GalleryData[] | null = null;
-	export let columns: number | number[] | undefined = [2];
-	export let rows: number | number[] | undefined = undefined;
-	export let height: number | "auto" = "auto";
-	export let preview: boolean;
-	export let allow_preview = true;
-	export let object_fit: "contain" | "cover" | "fill" | "none" | "scale-down" =
-		"cover";
-	export let show_share_button = false;
-	export let show_download_button = false;
-	export let i18n: I18nFormatter;
-	export let selected_index: number | null = null;
-	export let interactive: boolean;
-	export let _fetch: typeof fetch;
-	export let mode: "normal" | "minimal" = "normal";
-	export let show_fullscreen_button = true;
-	export let display_icon_button_wrapper_top_corner = false;
-	export let fullscreen = false;
-	export let root = "";
-	export let file_types: string[] | null = ["image", "video"];
-	export let max_file_size: number | null = null;
-	export let upload: Client["upload"] | undefined = undefined;
-	export let stream_handler: Client["stream"] | undefined = undefined;
-	export let fit_columns = true;
-	export let upload_promise: Promise<any> | null = null;
-	export let buttons: (string | CustomButtonType)[] | null = null;
-	export let on_custom_button_click: ((id: number) => void) | null = null;
+	let {
+		show_label = true,
+		label,
+		value = $bindable(),
+		columns = [2],
+		rows = undefined,
+		height = "auto",
+		preview,
+		allow_preview = true,
+		object_fit = "cover",
+		show_share_button = false,
+		show_download_button = false,
+		show_download_all_button = false,
+		i18n,
+		selected_index = $bindable(),
+		interactive,
+		_fetch,
+		show_fullscreen_button = true,
+		fullscreen = false,
+		root = "",
+		file_types = ["image", "video"],
+		sources,
+		max_file_size = null,
+		upload,
+		stream_handler,
+		fit_columns = true,
+		buttons = null,
+		oncustom_button_click = null,
+		onpreview_open = () => {},
+		onchange = () => {},
+		onclear = () => {},
+		onselect = (data) => {},
+		onshare = (data) => {},
+		onerror = (error) => {},
+		onpreview_close = () => {},
+		onfullscreen = (data) => {},
+		ondelete = () => {},
+		onupload = () => {},
+		onsource_change = () => {}
+	}: {
+		show_label: boolean;
+		label: string;
+		value: GalleryData[] | null;
+		columns: number | number[] | undefined;
+		rows: number | number[] | undefined;
+		height: number | string;
+		preview: boolean;
+		allow_preview: boolean;
+		object_fit: "contain" | "cover" | "fill" | "none" | "scale-down";
+		show_share_button: boolean;
+		show_download_button: boolean;
+		show_download_all_button: boolean;
+		i18n: I18nFormatter;
+		selected_index: number | null;
+		interactive: boolean;
+		_fetch: typeof fetch;
+		show_fullscreen_button: boolean;
+		fullscreen: boolean;
+		root: string;
+		file_types: string[] | null;
+		sources: ("upload" | "webcam" | "clipboard" | "webcam-video")[];
+		max_file_size: number | null;
+		upload: Client["upload"] | undefined;
+		stream_handler: Client["stream"] | undefined;
+		fit_columns: boolean;
+		buttons: (string | CustomButtonType)[] | null;
+		oncustom_button_click: ((id: number) => void) | null;
+		onpreview_open: () => void;
+		onchange: () => void;
+		onclear: () => void;
+		onselect: (data: any) => void;
+		onshare: (data: any) => void;
+		onerror: (error: any) => void;
+		onpreview_close: () => void;
+		onfullscreen: (data: any) => void;
+		ondelete: (data: any) => void;
+		onupload: (data: FileData | FileData[]) => void;
+		onsource_change: (source: string) => void;
+	} = $props();
 
+	let upload_promise: Promise<any> | null = null;
+	let mode = $state<"normal" | "minimal">("normal");
+	let display_icon_button_wrapper_top_corner = false;
 	let is_full_screen = false;
 	let image_container: HTMLElement;
 
-	const dispatch = createEventDispatcher<{
-		change: undefined;
-		select: SelectData;
-		preview_open: undefined;
-		preview_close: undefined;
-		fullscreen: boolean;
-		delete: { file: FileData; index: number };
-		upload: FileData | FileData[];
-		error: string;
-		clear: undefined;
-	}>();
+	let was_reset: boolean = $state(false);
 
-	// tracks whether the value of the gallery was reset
-	let was_reset = true;
-
-	$: was_reset = value == null || value.length === 0 ? true : was_reset;
-
-	let resolved_value: GalleryData[] | null = null;
-
-	$: resolved_value =
+	let resolved_value = $derived.by(() =>
 		value == null
 			? null
 			: (value.map((data) => {
@@ -96,55 +135,76 @@
 						return { image: data.image as FileData, caption: data.caption };
 					}
 					return {};
-				}) as GalleryData[]);
+				}) as GalleryData[])
+	);
 
-	let effective_columns: number | number[] | undefined = columns;
-
-	$: {
+	function resolve_effective_columns(
+		resolved_value: GalleryData[] | null,
+		columns: number | number[] | undefined,
+		fit_columns: boolean
+	) {
 		if (resolved_value && columns && fit_columns) {
 			const item_count = resolved_value.length;
 			if (Array.isArray(columns)) {
-				effective_columns = columns.map((col) => Math.min(col, item_count));
+				return columns.map((col) => Math.min(col, item_count));
 			} else {
-				effective_columns = Math.min(columns, item_count);
+				return Math.min(columns, item_count);
 			}
 		} else {
-			effective_columns = columns;
+			return columns;
 		}
 	}
 
-	let prev_value: GalleryData[] | null = value;
+	let effective_columns: number | number[] | undefined = $derived.by(() =>
+		resolve_effective_columns(resolved_value, columns, fit_columns)
+	);
+
+	let prev_value: GalleryData[] | null = $state(value);
 	if (selected_index == null && preview && value?.length) {
 		selected_index = 0;
 	}
-	let old_selected_index: number | null = selected_index;
 
-	$: if (!dequal(prev_value, value)) {
-		// When value is falsy (clear button or first load),
-		// preview determines the selected image
-		if (was_reset) {
-			selected_index = preview && value?.length ? 0 : null;
-			was_reset = false;
-			// Otherwise we keep the selected_index the same if the
-			// gallery has at least as many elements as it did before
-		} else {
-			if (selected_index !== null && value !== null) {
-				selected_index = Math.max(
-					0,
-					Math.min(selected_index, value.length - 1)
-				);
+	$effect(() => {
+		if (!dequal(prev_value, value)) {
+			// When value is falsy (clear button or first load),
+			// preview determines the selected image
+			if (was_reset) {
+				selected_index = preview && value?.length ? 0 : null;
+				was_reset = false;
+				// Otherwise we keep the selected_index the same if the
+				// gallery has at least as many elements as it did before
 			} else {
-				selected_index = null;
+				if (selected_index !== null && value !== null) {
+					selected_index = Math.max(
+						0,
+						Math.min(selected_index, value.length - 1)
+					);
+				} else {
+					selected_index = null;
+				}
 			}
+			onchange();
+			prev_value = value;
 		}
-		dispatch("change");
-		prev_value = value;
-	}
+	});
 
-	$: previous =
-		((selected_index ?? 0) + (resolved_value?.length ?? 0) - 1) %
-		(resolved_value?.length ?? 0);
-	$: next = ((selected_index ?? 0) + 1) % (resolved_value?.length ?? 0);
+	let previous = $derived.by(
+		() =>
+			((selected_index ?? 0) + (resolved_value?.length ?? 0) - 1) %
+			(resolved_value?.length ?? 0)
+	);
+	let next = $derived.by(
+		() => ((selected_index ?? 0) + 1) % (resolved_value?.length ?? 0)
+	);
+
+	function dispatch_select(index: number): void {
+		if (resolved_value !== null) {
+			onselect({
+				index,
+				value: resolved_value?.[index]
+			});
+		}
+	}
 
 	function handle_preview_click(event: MouseEvent): void {
 		const element = event.target as HTMLElement;
@@ -157,6 +217,7 @@
 		} else {
 			selected_index = next;
 		}
+		dispatch_select(selected_index);
 	}
 
 	function on_keydown(e: KeyboardEvent): void {
@@ -164,51 +225,38 @@
 			case "Escape":
 				e.preventDefault();
 				selected_index = null;
-				dispatch("preview_close");
+				onpreview_close();
 				break;
 			case "ArrowLeft":
 				e.preventDefault();
 				selected_index = previous;
+				dispatch_select(selected_index);
 				break;
 			case "ArrowRight":
 				e.preventDefault();
 				selected_index = next;
+				dispatch_select(selected_index);
 				break;
 			default:
 				break;
 		}
 	}
 
-	$: {
-		if (selected_index !== old_selected_index) {
-			old_selected_index = selected_index;
-			if (selected_index !== null) {
-				if (resolved_value != null) {
-					selected_index = Math.max(
-						0,
-						Math.min(selected_index, resolved_value.length - 1)
-					);
-				}
-				dispatch("select", {
-					index: selected_index,
-					value: resolved_value?.[selected_index]
-				});
-			}
+	$effect(() => {
+		if (allow_preview && container_element) {
+			scroll_to_img(selected_index);
 		}
-	}
-
-	$: if (allow_preview) {
-		scroll_to_img(selected_index);
-	}
+	});
 
 	let el: HTMLButtonElement[] = [];
-	let container_element: HTMLDivElement;
+	let container_element: HTMLDivElement | undefined = $state();
 
 	async function scroll_to_img(index: number | null): Promise<void> {
 		if (typeof index !== "number") return;
 		await tick();
 
 		if (el[index] === undefined) return;
+		if (!container_element) return;
 
 		el[index]?.focus();
 
@@ -262,10 +310,189 @@
 		URL.revokeObjectURL(url);
 	}
 
-	$: selected_media =
+	const crc_table = new Uint32Array(
+		Array.from({ length: 256 }, (_, i) => {
+			let c = i;
+			for (let k = 0; k < 8; k++) {
+				c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+			}
+			return c >>> 0;
+		})
+	);
+
+	function crc32(data: Uint8Array): number {
+		let c = 0xffffffff;
+		for (const byte of data) {
+			c = crc_table[(c ^ byte) & 0xff] ^ (c >>> 8);
+		}
+		return (c ^ 0xffffffff) >>> 0;
+	}
+
+	function write_uint16(view: DataView, offset: number, value: number): void {
+		view.setUint16(offset, value, true);
+	}
+
+	function write_uint32(view: DataView, offset: number, value: number): void {
+		view.setUint32(offset, value, true);
+	}
+
+	function zip_header(size: number): Uint8Array {
+		return new Uint8Array(size);
+	}
+
+	function get_unique_name(
+		file: FileData,
+		fallback: string,
+		used_names: Map<string, number>
+	): string {
+		const raw_name = file.orig_name || file.path || fallback;
+		const name = raw_name.split(/[/\\]/).pop() || fallback;
+		const count = used_names.get(name) ?? 0;
+		used_names.set(name, count + 1);
+		if (count === 0) return name;
+
+		const dot_index = name.lastIndexOf(".");
+		const base = dot_index > 0 ? name.slice(0, dot_index) : name;
+		const ext = dot_index > 0 ? name.slice(dot_index) : "";
+		return `${base}-${count + 1}${ext}`;
+	}
+
+	function create_zip(files: { name: string; data: Uint8Array }[]): Uint8Array {
+		const encoder = new TextEncoder();
+		const parts: Uint8Array[] = [];
+		const central_parts: Uint8Array[] = [];
+		const utf8_flag = 0x0800;
+		let offset = 0;
+
+		for (const file of files) {
+			const name = encoder.encode(file.name);
+			const checksum = crc32(file.data);
+			const local_header = zip_header(30 + name.length);
+			const local_view = new DataView(local_header.buffer);
+			write_uint32(local_view, 0, 0x04034b50);
+			write_uint16(local_view, 4, 20);
+			write_uint16(local_view, 6, utf8_flag);
+			write_uint16(local_view, 8, 0);
+			write_uint16(local_view, 10, 0);
+			write_uint16(local_view, 12, 33);
+			write_uint32(local_view, 14, checksum);
+			write_uint32(local_view, 18, file.data.length);
+			write_uint32(local_view, 22, file.data.length);
+			write_uint16(local_view, 26, name.length);
+			write_uint16(local_view, 28, 0);
+			local_header.set(name, 30);
+			parts.push(local_header, file.data);
+
+			const central_header = zip_header(46 + name.length);
+			const central_view = new DataView(central_header.buffer);
+			write_uint32(central_view, 0, 0x02014b50);
+			write_uint16(central_view, 4, 20);
+			write_uint16(central_view, 6, 20);
+			write_uint16(central_view, 8, utf8_flag);
+			write_uint16(central_view, 10, 0);
+			write_uint16(central_view, 12, 0);
+			write_uint16(central_view, 14, 33);
+			write_uint32(central_view, 16, checksum);
+			write_uint32(central_view, 20, file.data.length);
+			write_uint32(central_view, 24, file.data.length);
+			write_uint16(central_view, 28, name.length);
+			write_uint16(central_view, 30, 0);
+			write_uint16(central_view, 32, 0);
+			write_uint16(central_view, 34, 0);
+			write_uint16(central_view, 36, 0);
+			write_uint32(central_view, 38, 0);
+			write_uint32(central_view, 42, offset);
+			central_header.set(name, 46);
+			central_parts.push(central_header);
+
+			offset += local_header.length + file.data.length;
+		}
+
+		const central_offset = offset;
+		const central_size = central_parts.reduce(
+			(sum, part) => sum + part.length,
+			0
+		);
+		const end = zip_header(22);
+		const end_view = new DataView(end.buffer);
+		write_uint32(end_view, 0, 0x06054b50);
+		write_uint16(end_view, 4, 0);
+		write_uint16(end_view, 6, 0);
+		write_uint16(end_view, 8, files.length);
+		write_uint16(end_view, 10, files.length);
+		write_uint32(end_view, 12, central_size);
+		write_uint32(end_view, 16, central_offset);
+		write_uint16(end_view, 20, 0);
+
+		const zip = new Uint8Array(central_offset + central_size + end.length);
+		let cursor = 0;
+		for (const part of [...parts, ...central_parts, end]) {
+			zip.set(part, cursor);
+			cursor += part.length;
+		}
+		return zip;
+	}
+
+	async function get_zip_file(
+		url: string,
+		name: string
+	): Promise<{ name: string; data: Uint8Array } | null> {
+		let response;
+		try {
+			response = await _fetch(url);
+		} catch (error) {
+			if (error instanceof TypeError) {
+				window.open(url, "_blank", "noreferrer");
+			}
+			return null;
+		}
+		if (!response.ok) return null;
+		return {
+			name,
+			data: new Uint8Array(await response.arrayBuffer())
+		};
+	}
+
+	async function download_all(media: GalleryData[]): Promise<void> {
+		const used_names = new Map<string, number>();
+		const files = await Promise.all(
+			media.flatMap((item, index) => {
+				const file = "image" in item ? item.image : item.video;
+				const fallback =
+					"image" in item ? `image-${index + 1}` : `video-${index + 1}`;
+				if (!file.url) return [];
+				const name = get_unique_name(file, fallback, used_names);
+				return [get_zip_file(file.url, name)];
+			})
+		);
+		const valid_files = files.filter(
+			(file): file is { name: string; data: Uint8Array } => file !== null
+		);
+
+		if (valid_files.length === 0) return;
+
+		const zip = create_zip(valid_files);
+		const url = URL.createObjectURL(
+			new Blob([zip.buffer as ArrayBuffer], { type: "application/zip" })
+		);
+		const link = document.createElement("a");
+		link.href = url;
+		link.download = "gallery.zip";
+		link.click();
+		URL.revokeObjectURL(url);
+	}
+
+	function handle_download_all(): void {
+		if (resolved_value) {
+			download_all(resolved_value);
+		}
+	}
+
+	let selected_media = $derived.by(() =>
 		selected_index != null && resolved_value != null
 			? resolved_value[selected_index]
-			: null;
+			: null
+	);
 
 	let thumbnails_overflow = false;
 
@@ -286,10 +513,13 @@
 			window.removeEventListener("resize", check_thumbnails_overflow);
 	});
 
-	$: (resolved_value, check_thumbnails_overflow());
-	$: if (container_element) {
+	$effect(() => {
+		resolved_value;
 		check_thumbnails_overflow();
-	}
+		if (container_element) {
+			check_thumbnails_overflow();
+		}
+	});
 
 	function handle_item_delete(index: number): void {
 		if (!value || !resolved_value) return;
@@ -310,7 +540,7 @@
 		}
 
 		if (deleted_file_data) {
-			dispatch("delete", deleted_file_data);
+			ondelete(deleted_file_data);
 		}
 	}
 
@@ -328,20 +558,20 @@
 	<div class="gallery-container" bind:this={image_container}>
 		{#if selected_media && allow_preview}
 			<span
-				on:keydown={on_keydown}
+				onkeydown={on_keydown}
 				class="preview"
 				class:minimal={mode === "minimal"}
 			>
 				<IconButtonWrapper
 					display_top_corner={display_icon_button_wrapper_top_corner}
 					{buttons}
-					{on_custom_button_click}
+					on_custom_button_click={oncustom_button_click}
 				>
 					{#if show_download_button}
 						<IconButton
 							Icon={Download}
 							label={i18n("common.download")}
-							on:click={() => {
+							onclick={() => {
 								const image =
 									"image" in selected_media
 										? selected_media?.image
@@ -358,15 +588,23 @@
 					{/if}
 
 					{#if show_fullscreen_button}
-						<FullscreenButton {fullscreen} on:fullscreen />
+						<FullscreenButton
+							{fullscreen}
+							onclick={(is_fullscreen) =>
+								onfullscreen({ detail: is_fullscreen })}
+						/>
 					{/if}
 
 					{#if show_share_button}
 						<div class="icon-button">
 							<ShareButton
 								{i18n}
-								on:share
-								on:error
+								onshare={(detail) => {
+									onshare({ detail } as CustomEvent);
+								}}
+								onerror={(detail) => {
+									onerror({ detail } as CustomEvent);
+								}}
 								value={resolved_value}
 								formatter={format_gallery_for_sharing}
 							/>
@@ -376,16 +614,16 @@
 						<IconButton
 							Icon={Clear}
 							label="Close"
-							on:click={() => {
+							onclick={() => {
 								selected_index = null;
-								dispatch("preview_close");
+								onpreview_close();
 							}}
 						/>
 					{/if}
 				</IconButtonWrapper>
 				<button
 					class="media-button"
-					on:click={"image" in selected_media
+					onclick={"image" in selected_media
 						? (event) => handle_preview_click(event)
 						: null}
 					style="height: calc(100% - {selected_media.caption
@@ -433,7 +671,10 @@
 					{#each resolved_value as media, i}
 						<button
 							bind:this={el[i]}
-							on:click={() => (selected_index = i)}
+							onclick={() => {
+								selected_index = i;
+								dispatch_select(i);
+							}}
 							class="thumbnail-item thumbnail-small"
 							class:selected={selected_index === i && mode !== "minimal"}
 							aria-label={"Thumbnail " +
@@ -475,34 +716,84 @@
 			class:minimal={mode === "minimal"}
 			class:fixed-height={mode !== "minimal" && (!height || height == "auto")}
 			class:hidden={is_full_screen}
-			style:height={height !== "auto" ? height + "px" : null}
+			style:height={height !== "auto"
+				? typeof height === "number"
+					? height + "px"
+					: height
+				: null}
 		>
 			{#if interactive && selected_index === null}
 				<ModifyUpload
 					{i18n}
-					on:clear={() => {
+					onclear={() => {
 						value = [];
-						dispatch("clear");
+						onsource_change("upload");
+						onclear();
 					}}
 				>
+					{#if show_download_all_button}
+						<IconButton
+							Icon={DownloadAll}
+							label={i18n("common.download_all")}
+							onclick={handle_download_all}
+						/>
+					{/if}
 					{#if upload && stream_handler}
-						<IconButton Icon={UploadIcon} label={i18n("common.upload")}>
+						<IconButton
+							Icon={UploadIcon}
+							label={i18n("upload_text.click_to_upload")}
+						>
 							<UploadComponent
 								bind:upload_promise
 								icon_upload={true}
-								on:load={(e) => dispatch("upload", e.detail)}
+								onload={(e) => onupload(e)}
 								filetype={file_types}
 								file_count="multiple"
 								{max_file_size}
 								{root}
 								bind:uploading
-								on:error={(e) => dispatch("error", e.detail)}
+								onerror={(e) => onerror(e)}
 								{stream_handler}
 								{upload}
 							/>
 						</IconButton>
 					{/if}
+					{#if sources.includes("webcam")}
+						<IconButton
+							Icon={Webcam}
+							label={i18n("common.webcam")}
+							onclick={() => {
+								onsource_change("webcam");
+							}}
+						/>
+					{/if}
+					{#if sources.includes("webcam-video")}
+						<IconButton
+							Icon={VideoIcon}
+							label={i18n("common.video")}
+							onclick={() => {
+								onsource_change("webcam-video");
+							}}
+						/>
+					{/if}
+					{#if sources.includes("clipboard")}
+						<IconButton
+							label={i18n("upload_text.paste_clipboard")}
+							onclick={() => {
+								onsource_change("clipboard");
+							}}
+							Icon={ImagePaste}
+						/>
+					{/if}
 				</ModifyUpload>
+			{:else if show_download_all_button && !(selected_media && allow_preview)}
+				<IconButtonWrapper>
+					<IconButton
+						Icon={DownloadAll}
+						label={i18n("common.download_all")}
+						onclick={handle_download_all}
+					/>
+				</IconButtonWrapper>
 			{/if}
 			<div
 				class="grid-container"
@@ -514,11 +805,12 @@
 						<button
 							class="thumbnail-item thumbnail-lg"
 							class:selected={selected_index === i}
-							on:click={() => {
+							onclick={() => {
 								if (selected_index === null && allow_preview) {
-									dispatch("preview_open");
+									onpreview_open();
 								}
 								selected_index = i;
+								dispatch_select(i);
 							}}
 							aria-label={"Thumbnail " +
 								(i + 1) +
@@ -554,7 +846,10 @@
 						{#if interactive}
 							<button
 								class="delete-button"
-								on:click|stopPropagation={() => handle_item_delete(i)}
+								onclick={(event) => {
+									event.stopPropagation();
+									handle_item_delete(i);
+								}}
 								aria-label="Delete image"
 							>
 								<Clear />
@@ -568,11 +863,11 @@
 {/if}
 
 <style lang="postcss">
-	.image-container {
+	.gallery-container {
 		height: 100%;
 		position: relative;
 	}
-	.image-container :global(img),
+	.gallery-container :global(img),
 	button {
 		width: var(--size-full);
 		height: var(--size-full);

@@ -84,6 +84,24 @@ def set_cancel_events(
 
 @document()
 class Dependency(dict):
+    """
+    The Dependency object is usually not created directly but is returned when an event listener is set up. It contains the configuration
+    data for the event listener, and can be used to set up additional event listeners that depend on the completion of the current event
+    listener using .then(), .success(), and .failure().
+
+    Example:
+        import gradio as gr
+        with gr.Blocks() as demo:
+            first_textbox = gr.Textbox()
+            second_textbox = gr.Textbox()
+            button = gr.Button("Submit")
+            dependency = button.click(lambda x: "Hello, " + x, first_textbox, second_textbox)
+            dependency.success(lambda: gr.Info("Greeting successful"), None, None)
+            dependency.failure(lambda: gr.Warning("Greeting failed"), None, None)
+        demo.launch()
+    Demos: chatbot_consecutive, blocks_chained_events
+    """
+
     def __init__(
         self,
         trigger,
@@ -92,14 +110,6 @@ class Dependency(dict):
         fn,
         associated_timer: Timer | None = None,
     ):
-        """
-        The Dependency object is usualy not created directly but is returned when an event listener is set up. It contains the configuration
-        data for the event listener, and can be used to set up additional event listeners that depend on the completion of the current event
-        listener using .then(), .success(), and .failure().
-
-        Demos: chatbot_consecutive, blocks_chained_events
-        """
-
         super().__init__(key_vals)
         self.fn = fn
         self.associated_timer = associated_timer
@@ -168,6 +178,7 @@ class EventData:
             textbox.select(on_select, textbox, statement)
         demo.launch()
     Demos: gallery_selections, tictactoe
+    Guides: blocks-and-event-listeners
     """
 
     def __init__(self, target: Block | None, _data: Any):
@@ -315,6 +326,7 @@ class LikeData(EventData):
             c.like(test, c, t)
         demo.launch()
     Demos: chatbot_core_components_simple
+    Guides: chatbot-specific-events
     """
 
     def __init__(self, target: Block | None, data: Any):
@@ -353,6 +365,7 @@ class RetryData(EventData):
             chatbot = gr.Chatbot()
             chatbot.retry(retry, chatbot, chatbot)
         demo.launch()
+    Guides: chatbot-specific-events
     """
 
     def __init__(self, target: Block | None, data: Any):
@@ -416,6 +429,7 @@ class EditData(EventData):
             chatbot = gr.Chatbot()
             chatbot.undo(edit, chatbot, chatbot)
         demo.launch()
+    Guides: chatbot-specific-events
     """
 
     def __init__(self, target: Block | None, data: Any):
@@ -515,6 +529,10 @@ if TYPE_CHECKING:
         ],
         Dependency,
     ]
+    # Bound component event methods (e.g. button.click, tab.select) don't
+    # expose the ``block`` first-parameter present in EventListenerCallable,
+    # so we also accept any callable that returns a Dependency.
+    Trigger = Union[EventListenerCallable, Callable[..., Dependency]]
 
 
 class EventListener(str):
@@ -644,23 +662,34 @@ class EventListener(str):
                 postprocess: If False, will not run postprocessing of component data before returning 'fn' output to the browser.
                 cancels: A list of other events to cancel when this listener is triggered. For example, setting cancels=[click_event] will cancel the click_event, where click_event is the return value of another components .click method. Functions that have not yet run (or generators that are iterating) will be cancelled, but functions that are currently running will be allowed to finish.
                 trigger_mode: If "once" (default for all events except `.change()`) would not allow any submissions while an event is pending. If set to "multiple", unlimited submissions are allowed while pending, and "always_last" (default for `.change()` and `.key_up()` events) would allow a second submission after the pending event is complete.
-                js: Optional frontend js method to run before running 'fn'. Input arguments for js method are values of 'inputs' and 'outputs', return should be a list of values for output components.
+                js: Optional frontend JavaScript to run before 'fn', provided as either a function or a raw code string. A function receives the values of 'inputs' and 'outputs' as arguments; raw code can access them through `arguments`. Return a list of values for the output components.
                 concurrency_limit: If set, this is the maximum number of this event that can be running simultaneously. Can be set to None to mean no concurrency_limit (any number of this event can be running simultaneously). Set to "default" to use the default concurrency limit (defined by the `default_concurrency_limit` parameter in `Blocks.queue()`, which itself is 1 by default).
                 concurrency_id: If set, this is the id of the concurrency group. Events with the same concurrency_id will be limited by the lowest set concurrency_limit.
-                api_visibility: controls the visibility and accessibility of this endpoint. Can be "public" (shown in API docs and callable by clients), "private" (hidden from API docs and not callable by clients), or "undocumented" (hidden from API docs but callable by clients and via gr.load). If fn is None, api_visibility will automatically be set to "private".
+                api_visibility: controls the visibility and accessibility of this endpoint. Can be "public" (shown in API docs and callable by clients), "private" (hidden from API docs and not callable by the Gradio client libraries), or "undocumented" (hidden from API docs but callable by clients and via gr.load). If fn is None, api_visibility will automatically be set to "private".
                 key: A unique key for this event listener to be used in @gr.render(). If set, this value identifies an event as identical across re-renders when the key is identical.
                 validator: Optional validation function to run before the main function. If provided, this function will be executed first with queue=False, and only if it completes successfully will the main function be called. The validator receives the same inputs as the main function and should return a `gr.validate()` for each input value.
             """
 
             if fn == "decorator":
-
-                def wrapper(func):
-                    event_trigger(
+                root_block = get_blocks_context()
+                js_only_dep: Dependency | None = None
+                created_fn_ids: set[int] = set()
+                prior_fn_id = post_fn_id = 0
+                if isinstance(js, str) and root_block is not None:
+                    # A js string can run entirely in the frontend without a backend
+                    # fn, so register the event immediately with fn=None in case this
+                    # call is not being used as a decorator, e.g. `btn.click(js=...)`.
+                    # If it is used as a decorator after all, `wrapper` removes this
+                    # js-only event before registering the decorated function.
+                    prior_fn_ids = set(root_block.fns)
+                    prior_fn_id = root_block.fn_id
+                    js_only_dep = event_trigger(
                         block=block,
-                        fn=func,
+                        fn=None,
                         inputs=inputs,
                         outputs=outputs,
                         api_name=api_name,
+                        api_description=api_description,
                         scroll_to_output=scroll_to_output,
                         show_progress=show_progress,
                         show_progress_on=show_progress_on,
@@ -675,6 +704,43 @@ class EventListener(str):
                         concurrency_limit=concurrency_limit,
                         concurrency_id=concurrency_id,
                         api_visibility=api_visibility,
+                        time_limit=time_limit,
+                        stream_every=stream_every,
+                        key=key,
+                        validator=validator,
+                    )
+                    created_fn_ids = set(root_block.fns) - prior_fn_ids
+                    post_fn_id = root_block.fn_id
+
+                def wrapper(func):
+                    if js_only_dep is not None and root_block is not None:
+                        for fn_id in created_fn_ids:
+                            root_block.fns.pop(fn_id, None)
+                        if root_block.fn_id == post_fn_id:
+                            root_block.fn_id = prior_fn_id
+                    event_trigger(
+                        block=block,
+                        fn=func,
+                        inputs=inputs,
+                        outputs=outputs,
+                        api_name=api_name,
+                        api_description=api_description,
+                        scroll_to_output=scroll_to_output,
+                        show_progress=show_progress,
+                        show_progress_on=show_progress_on,
+                        queue=queue,
+                        batch=batch,
+                        max_batch_size=max_batch_size,
+                        preprocess=preprocess,
+                        postprocess=postprocess,
+                        cancels=cancels,
+                        trigger_mode=trigger_mode,
+                        js=js,
+                        concurrency_limit=concurrency_limit,
+                        concurrency_id=concurrency_id,
+                        api_visibility=api_visibility,
+                        time_limit=time_limit,
+                        stream_every=stream_every,
                         key=key,
                         validator=validator,
                     )
@@ -685,6 +751,9 @@ class EventListener(str):
 
                     return inner
 
+                if js_only_dep is not None:
+                    js_only_dep.fn = wrapper
+                    return js_only_dep
                 return Dependency(None, {}, None, wrapper)
 
             from gradio.components.base import StreamingInput
@@ -767,7 +836,7 @@ class EventListener(str):
 
 @document()
 def on(
-    triggers: Sequence[EventListenerCallable] | EventListenerCallable | None = None,
+    triggers: Sequence[Trigger] | Trigger | None = None,
     fn: Callable[..., Any] | None | Literal["decorator"] = "decorator",
     inputs: Component
     | BlockContext
@@ -822,10 +891,10 @@ def on(
         postprocess: If False, will not run postprocessing of component data before returning 'fn' output to the browser.
         cancels: A list of other events to cancel when this listener is triggered. For example, setting cancels=[click_event] will cancel the click_event, where click_event is the return value of another components .click method. Functions that have not yet run (or generators that are iterating) will be cancelled, but functions that are currently running will be allowed to finish.
         trigger_mode: If "once" (default for all events except `.change()`) would not allow any submissions while an event is pending. If set to "multiple", unlimited submissions are allowed while pending, and "always_last" (default for `.change()` and `.key_up()` events) would allow a second submission after the pending event is complete.
-        js: Optional frontend js method to run before running 'fn'. Input arguments for js method are values of 'inputs', return should be a list of values for output components.
+        js: Optional frontend JavaScript to run before 'fn', provided as either a function or a raw code string. A function receives the values of 'inputs' as arguments; raw code can access them through `arguments`. Return a list of values for the output components.
         concurrency_limit: If set, this is the maximum number of this event that can be running simultaneously. Can be set to None to mean no concurrency_limit (any number of this event can be running simultaneously). Set to "default" to use the default concurrency limit (defined by the `default_concurrency_limit` parameter in `Blocks.queue()`, which itself is 1 by default).
         concurrency_id: If set, this is the id of the concurrency group. Events with the same concurrency_id will be limited by the lowest set concurrency_limit.
-        api_visibility: controls the visibility and accessibility of this endpoint. Can be "public" (shown in API docs and callable by clients), "private" (hidden from API docs and not callable by clients), or "undocumented" (hidden from API docs but callable by clients and via gr.load). If fn is None, api_visibility will automatically be set to "private".
+        api_visibility: controls the visibility and accessibility of this endpoint. Can be "public" (shown in API docs and callable by clients), "private" (hidden from API docs and not callable by the Gradio client libraries), or "undocumented" (hidden from API docs but callable by clients and via gr.load). If fn is None, api_visibility will automatically be set to "private".
         time_limit: The time limit for the function to run. Parameter only used for the `.stream()` event.
         stream_every: The latency (in seconds) at which stream chunks are sent to the backend. Defaults to 0.5 seconds. Parameter only used for the `.stream()` event.
         validator: Optional validation function to run before the main function. If provided, this function will be executed first with queue=False, and only if it completes successfully will the main function be called. The validator receives the same inputs as the main function and should return a `gr.validate()` for each input value.
@@ -854,14 +923,60 @@ def on(
         inputs = [inputs]  # type: ignore
 
     if fn == "decorator":
+        root_block = get_blocks_context()
+        js_only_dep: Dependency | None = None
+        created_fn_ids: set[int] = set()
+        prior_fn_id = post_fn_id = 0
+        if isinstance(js, str) and root_block is not None:
+            # A js string can run entirely in the frontend without a backend fn, so
+            # register the event immediately with fn=None in case this call is not
+            # being used as a decorator, e.g. `gr.on(triggers, js=...)`. If it is
+            # used as a decorator after all, `wrapper` removes this js-only event
+            # before registering the decorated function.
+            prior_fn_ids = set(root_block.fns)
+            prior_fn_id = root_block.fn_id
+            js_only_dep = on(
+                triggers,
+                fn=None,
+                inputs=inputs,
+                outputs=outputs,
+                api_name=api_name,
+                api_description=api_description,
+                scroll_to_output=scroll_to_output,
+                show_progress=show_progress,
+                show_progress_on=show_progress_on,
+                queue=queue,
+                batch=batch,
+                max_batch_size=max_batch_size,
+                preprocess=preprocess,
+                postprocess=postprocess,
+                cancels=cancels,
+                js=js,
+                concurrency_limit=concurrency_limit,
+                concurrency_id=concurrency_id,
+                api_visibility=api_visibility,
+                trigger_mode=trigger_mode,
+                time_limit=time_limit,
+                stream_every=stream_every,
+                key=key,
+                validator=validator,
+            )
+            created_fn_ids = set(root_block.fns) - prior_fn_ids
+            post_fn_id = root_block.fn_id
 
         def wrapper(func):
+            if js_only_dep is not None and root_block is not None:
+                for fn_id in created_fn_ids:
+                    root_block.fns.pop(fn_id, None)
+                if root_block.fn_id == post_fn_id:
+                    root_block.fn_id = prior_fn_id
             on(
                 triggers,
                 fn=func,
                 inputs=inputs,
                 outputs=outputs,
                 api_name=api_name,
+                api_description=api_description,
                 scroll_to_output=scroll_to_output,
                 show_progress=show_progress,
                 show_progress_on=show_progress_on,
@@ -888,6 +1003,9 @@ def on(
 
             return inner
 
+        if js_only_dep is not None:
+            js_only_dep.fn = wrapper
+            return js_only_dep
         return Dependency(None, {}, None, wrapper)
 
     root_block = get_blocks_context()
@@ -972,7 +1090,7 @@ def api(
         max_batch_size: Maximum number of inputs to batch together if this is called from the queue (only relevant if batch=True)
         concurrency_limit: If set, this is the maximum number of this event that can be running simultaneously. Can be set to None to mean no concurrency_limit (any number of this event can be running simultaneously). Set to "default" to use the default concurrency limit (defined by the `default_concurrency_limit` parameter in `Blocks.queue()`, which itself is 1 by default).
         concurrency_id: If set, this is the id of the concurrency group. Events with the same concurrency_id will be limited by the lowest set concurrency_limit.
-        api_visibility: controls the visibility and accessibility of this endpoint. Can be "public" (shown in API docs and callable by clients), "private" (hidden from API docs and not callable by clients), or "undocumented" (hidden from API docs but callable by clients and via gr.load). If fn is None, api_visibility will automatically be set to "private".
+        api_visibility: controls the visibility and accessibility of this endpoint. Can be "public" (shown in API docs and callable by clients), "private" (hidden from API docs and not callable by the Gradio client libraries), or "undocumented" (hidden from API docs but callable by clients and via gr.load). If fn is None, api_visibility will automatically be set to "private".
         time_limit: The time limit for the function to run. Parameter only used for the `.stream()` event.
         stream_every: The latency (in seconds) at which stream chunks are sent to the backend. Defaults to 0.5 seconds. Parameter only used for the `.stream()` event.
     Example:
@@ -1100,9 +1218,11 @@ class Events:
     edit = EventListener(
         "edit",
         doc="This listener is triggered when the user edits the {{ component }} (e.g. image) using the built-in editor.",
-        callback=lambda block: setattr(block, "editable", "user")
-        if getattr(block, "editable", None) is None
-        else None,
+        callback=lambda block: (
+            setattr(block, "editable", "user")
+            if getattr(block, "editable", None) is None
+            else None
+        ),
     )
     clear = EventListener(
         "clear",

@@ -1,6 +1,4 @@
-<svelte:options accessors={true} />
-
-<script context="module" lang="ts">
+<script module lang="ts">
 	export { default as BaseColorPicker } from "./shared/Colorpicker.svelte";
 	export { default as BaseExample } from "./Example.svelte";
 </script>
@@ -24,7 +22,7 @@
 	$effect(() => {
 		if (old_value !== gradio.props.value) {
 			old_value = gradio.props.value;
-			gradio.dispatch("change");
+			gradio.dispatch("change", gradio.props.value);
 		}
 	});
 </script>
@@ -52,6 +50,7 @@
 		show_label={gradio.shared.show_label}
 		disabled={!gradio.shared.interactive}
 		on_input={() => gradio.dispatch("input")}
+		on_release={() => gradio.dispatch("release", gradio.props.value)}
 		on_submit={() => gradio.dispatch("submit")}
 		on_blur={() => gradio.dispatch("blur")}
 		on_focus={() => gradio.dispatch("focus")}

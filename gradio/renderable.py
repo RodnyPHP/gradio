@@ -7,13 +7,13 @@ from gradio_client.documentation import document
 
 from gradio.blocks import Block
 from gradio.components import Component
-from gradio.context import Context, LocalContext
+from gradio.context import LocalContext, get_blocks_context, get_render_context
 from gradio.events import EventListener, EventListenerMethod
 from gradio.layouts import Column, Row
 
 if TYPE_CHECKING:
     from gradio.blocks import BlockFunction
-    from gradio.events import EventListenerCallable
+    from gradio.events import Trigger
 
 
 class Renderable:
@@ -28,24 +28,26 @@ class Renderable:
         queue: bool,
         show_progress: Literal["full", "minimal", "hidden"],
     ):
-        if Context.root_block is None:
+        blocks_config = get_blocks_context()
+        if blocks_config is None:
             raise ValueError("Reactive render must be inside a Blocks context.")
+        root_block = blocks_config.root_block
 
-        self._id = len(Context.root_block.renderables)
-        Context.root_block.renderables.append(self)
-        self.ContainerClass = Row if isinstance(Context.block, Row) else Column
+        self._id = len(blocks_config.renderables)
+        blocks_config.renderables.append(self)
+        self.ContainerClass = Row if isinstance(get_render_context(), Row) else Column
         self.container = self.ContainerClass(show_progress=True)
         self.container_id = self.container._id
 
         self.fn = fn
         self.inputs = inputs
         self.triggers: list[EventListenerMethod] = []
-        self.page = Context.root_block.current_page
+        self.page = root_block.current_page
         self.key_to_id_map: dict[int | str | tuple[str | int, ...], int] = {}
         self.render_iteration = 0
 
         self.triggers = [EventListenerMethod(*t) for t in triggers]
-        Context.root_block.default_config.set_event_trigger(
+        blocks_config.set_event_trigger(
             self.triggers,
             self.apply,
             self.inputs,
@@ -86,7 +88,16 @@ class Renderable:
             LocalContext.key_to_id_map.set(None)
 
         for fn in fns_from_last_render:
-            if blocks_config.fns[fn._id].render_iteration != self.render_iteration:
+            # The block-function may already have been removed from `blocks_config.fns`
+            # during the inner render -- e.g. `gr.Examples` adds and then pops a
+            # transient "fake_event" function (gradio/helpers.py) for cache-on-launch
+            # processing. If the inner render never re-registered ``fn``, indexing
+            # would raise `KeyError`. The cleanup intent is "drop stale fns from the
+            # previous iteration", so a missing entry is already in the desired state.
+            current_fn = blocks_config.fns.get(fn._id)
+            if current_fn is None:
+                continue
+            if current_fn.render_iteration != self.render_iteration:
                 del blocks_config.fns[fn._id]
 
         self.render_iteration += 1
@@ -95,7 +106,7 @@ class Renderable:
 @document()
 def render(
     inputs: Sequence[Component] | Component | None = None,
-    triggers: Sequence[EventListenerCallable] | EventListenerCallable | None = None,
+    triggers: Sequence[Trigger] | Trigger | None = None,
     *,
     queue: bool = True,
     trigger_mode: Literal["once", "multiple", "always_last"] | None = "always_last",
@@ -106,7 +117,10 @@ def render(
     """
     The render decorator allows Gradio Blocks apps to have dynamic layouts, so that the components and event listeners in your app can change depending on custom logic.
     Attaching a @gr.render decorator to a function will cause the function to be re-run whenever the inputs are changed (or specified triggers are activated). The function contains the components and event listeners that will update based on the inputs.
-
+    With render, you can:\n
+    - Show or hide components\n
+    - Change text or layout\n
+    - Create components based on what users enter\n
     The basic usage of @gr.render is as follows:\n
     1. Create a function and attach the @gr.render decorator to it.\n
     2. Add the input components to the `inputs=` argument of @gr.render, and create a corresponding argument in your function for each component.\n
@@ -137,15 +151,17 @@ def render(
     """
     new_triggers = cast(Union[list[EventListener], EventListener, None], triggers)
 
-    if Context.root_block is None:
+    blocks_config = get_blocks_context()
+    if blocks_config is None:
         raise ValueError("Reactive render must be inside a Blocks context.")
+    root_block = blocks_config.root_block
 
     inputs = (
         [inputs] if isinstance(inputs, Component) else [] if inputs is None else inputs
     )
     _triggers: list[tuple[Block | None, str]] = []
     if new_triggers is None:
-        _triggers = [(Context.root_block, "load")]
+        _triggers = [(root_block, "load")]
         for input in inputs:
             if hasattr(input, "change"):
                 _triggers.append((input, "change"))

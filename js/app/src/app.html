@@ -33,17 +33,16 @@
 			window.__gradio_mode__ = "app";
 			window.iFrameResizer = {
 				autoResize: false,
-				sizeWidth: false
+				sizeWidth: false,
+				onReady: () =>
+					window.dispatchEvent(new Event("gradio:iframe-resizer-ready"))
 			};
 			window.parent?.postMessage(
 				{ type: "SET_SCROLLING", enabled: false },
 				"*"
 			);
 		</script>
-		<script
-			src="https://cdnjs.cloudflare.com/ajax/libs/iframe-resizer/4.3.1/iframeResizer.contentWindow.min.js"
-			async
-		></script>
+		<script src="static/js/iframeResizer.contentWindow.min.js" async></script>
 
 		%sveltekit.head%
 	</head>

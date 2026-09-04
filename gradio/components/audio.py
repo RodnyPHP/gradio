@@ -1,9 +1,11 @@
-"""gr.Audio() component."""
+"""The core gr.Audio() component."""
 
 from __future__ import annotations
 
 import dataclasses
 import io
+import json
+import warnings
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -59,7 +61,7 @@ class Audio(
     """
     Creates an audio component that can be used to upload/record audio (as an input) or display audio (as an output).
     Demos: generate_tone, reverse_audio
-    Guides: real-time-speech-recognition
+    Guides: streaming-inputs, streaming-outputs, automatic-voice-detection, real-time-speech-recognition
     """
 
     EVENTS = [
@@ -118,7 +120,7 @@ class Audio(
             sources: A list of sources permitted for audio. "upload" creates a box where user can drop an audio file, "microphone" creates a microphone input. The first element in the list will be used as the default source. If None, defaults to ["upload", "microphone"], or ["microphone"] if `streaming` is True.
             type: The format the audio file is converted to before being passed into the prediction function. "numpy" converts the audio to a tuple consisting of: (int sample rate, numpy.array for the data), "filepath" passes a str path to a temporary file containing the audio.
             label: the label for this component. Appears above the component and is also used as the header if there are a table of examples for this component. If None and used in a `gr.Interface`, the label will be the name of the parameter this component is assigned to.
-            every: Continously calls `value` to recalculate it if `value` is a function (has no effect otherwise). Can provide a Timer whose tick resets `value`, or a float that provides the regular interval for the reset Timer.
+            every: Continuously calls `value` to recalculate it if `value` is a function (has no effect otherwise). Can provide a Timer whose tick resets `value`, or a float that provides the regular interval for the reset Timer.
             inputs: Components that are used as inputs to calculate `value` if `value` is a function (has no effect otherwise). `value` is recalculated any time the inputs change.
             show_label: if True, will display label.
             container: If True, will place the component in a container - providing some extra padding around the border.
@@ -231,7 +233,10 @@ class Audio(
         Parameters:
             payload: audio data as a FileData object, or None.
         Returns:
-            passes audio as one of these formats (depending on `type`): a `str` filepath, or `tuple` of (sample rate in Hz, audio data as numpy array). If the latter, the audio data is a 16-bit `int` array whose values range from -32768 to 32767 and shape of the audio data array is (samples,) for mono audio or (samples, channels) for multi-channel audio.
+            Passes audio as one of these formats (depending on `type`):
+            - `str` filepath
+            - `tuple` of (sample rate in Hz, audio data as numpy array).
+            -- The audio data is a 16-bit `int` array whose values range from -32768 to 32767 and shape of the audio data array is (samples,) for mono audio or (samples, channels) for multi-channel audio.
         """
         if payload is None:
             return payload
@@ -267,7 +272,13 @@ class Audio(
     ) -> FileData | bytes | None:
         """
         Parameters:
-            value: expects audio data in any of these formats: a `str` or `pathlib.Path` filepath or URL to an audio file, or a `bytes` object (recommended for streaming), or a `tuple` of (sample rate in Hz, audio data as numpy array). Note: if audio is supplied as a numpy array, the audio will be normalized by its peak value to avoid distortion or clipping in the resulting audio.
+            value: Expects audio data in any of these formats:
+                - `str`
+                - `pathlib.Path` filepath
+                - URL to an audio file
+                - `bytes` object (recommended for streaming)
+                - `tuple` of (sample rate in Hz, audio data as numpy array).
+                -- Note: if audio is supplied as a numpy array, the audio will be normalized by its peak value to avoid distortion or clipping in the resulting audio.
         Returns:
             FileData object, bytes, or None.
         """
@@ -300,6 +311,17 @@ class Audio(
                 sample_rate, data = processing_utils.audio_from_file(str(value))
                 file_path = processing_utils.save_audio_to_cache(
                     data, sample_rate, format=self.format, cache_dir=self.GRADIO_CACHE
+                )
+            elif (
+                not client_utils.is_http_url_like(value)
+                and processing_utils.ffmpeg_installed()
+                and not processing_utils.audio_is_playable(str(value))
+            ):
+                warnings.warn(
+                    "Audio does not have browser-compatible container or codec. Converting to wav."
+                )
+                file_path = processing_utils.convert_audio_to_playable(
+                    str(value), cache_dir=self.GRADIO_CACHE
                 )
             else:
                 file_path = str(value)
@@ -343,7 +365,7 @@ class Audio(
                 "extension": ".aac",
             }, output_file
         if client_utils.is_http_url_like(value["path"]):
-            response = httpx.get(value["path"])
+            response = await processing_utils.async_ssrf_protected_get(value["path"])
             binary_data = response.content
         else:
             output_file["orig_name"] = value["orig_name"]
@@ -405,9 +427,6 @@ class Audio(
     def _process_subtitle_file(
         self, subtitle_file: str | Path
     ) -> FileData | list[dict[str, Any]]:
-        import json
-        from pathlib import Path
-
         file_path = Path(subtitle_file)
         if file_path.suffix.lower() == ".json":
             try:

@@ -3,11 +3,8 @@ import { test, expect } from "@self/tootils";
 test("Search bar filters dataframe correctly.", async ({ page }) => {
 	await page.getByTestId("textbox").fill("yam-peleg");
 	await page.getByTestId("textbox").press("Enter");
-	await expect(
-		page
-			.getByRole("button", { name: "yam-peleg/Experiment26-7B", exact: true })
-			.first()
-	).toBeInViewport();
+	const cell = page.getByTestId("cell-0-1").first();
+	await expect(cell).toContainText("yam-peleg/Experiment26-7B");
 });
 
 test("Column selection adds columns to the dataframe.", async ({ page }) => {
@@ -39,13 +36,14 @@ test("Column selection removes columns to the dataframe.", async ({ page }) => {
 });
 
 test("Model Types Checkbox filters models from the table", async ({ page }) => {
-	await expect(
-		page.getByRole("button", { name: "Qwen/Qwen-72B", exact: true }).first()
-	).not.toBeInViewport();
+	const qwen_cell = page
+		.getByRole("gridcell")
+		.filter({ hasText: "Qwen/Qwen-72B" })
+		.first();
+
+	await expect(qwen_cell).not.toBeInViewport();
 	await page.getByLabel("🔶").uncheck();
 	await page.getByLabel("💬").uncheck();
 	await page.getByLabel("🤝").uncheck();
-	await expect(
-		page.getByRole("button", { name: "Qwen/Qwen-72B", exact: true }).first()
-	).toBeInViewport();
+	await expect(qwen_cell).toBeInViewport();
 });

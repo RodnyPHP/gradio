@@ -1,9 +1,9 @@
 import type { Gradio, SelectData, CustomButton } from "@gradio/utils";
-import type { LoadingStatus } from "@gradio/statustracker";
+import type { ILoadingStatus as LoadingStatus } from "@gradio/statustracker";
 
 export interface PlotData {
 	columns: string[];
-	data: [string | number][];
+	data: (string | number)[][];
 	datatypes: Record<string, "quantitative" | "temporal" | "nominal">;
 	mark: "line" | "point" | "bar";
 }
@@ -25,6 +25,8 @@ export interface NativePlotProps {
 	y_lim: [number | null, number | null] | null;
 	x_label_angle: number | null;
 	y_label_angle: number | null;
+	x_axis_format: string | null;
+	y_axis_format: string | null;
 	x_axis_labels_visible: boolean;
 	caption: string | null;
 	sort: "x" | "y" | "-x" | "-y" | string[] | null;
@@ -43,6 +45,7 @@ export interface NativePlotProps {
 }
 
 export interface NativePlotEvents {
+	change: never;
 	select: SelectData;
 	double_click: undefined;
 	clear_status: LoadingStatus;

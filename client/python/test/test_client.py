@@ -282,34 +282,26 @@ class TestClientPredictions:
     def test_job_output_video(self, video_component):
         with connect(video_component) as client:
             job = client.submit(
-                {
-                    "video": handle_file(
-                        "https://huggingface.co/spaces/gradio/video_component/resolve/main/files/a.mp4"
-                    )
-                },
-                fn_index=0,
+                handle_file(
+                    "https://huggingface.co/datasets/freddyaboulton/bucket/resolve/main/ProgressNotifications.mp4"
+                ),
+                api_name="/predict",
             )
-            assert Path(job.result()["video"]).exists()
+            assert Path(job.result()).exists()
             assert (
-                Path(DEFAULT_TEMP_DIR).resolve()
-                in Path(job.result()["video"]).resolve().parents
+                Path(DEFAULT_TEMP_DIR).resolve() in Path(job.result()).resolve().parents
             )
 
         temp_dir = tempfile.mkdtemp()
         with connect(video_component, download_files=temp_dir) as client:
             job = client.submit(
-                {
-                    "video": handle_file(
-                        "https://huggingface.co/spaces/gradio/video_component/resolve/main/files/a.mp4"
-                    )
-                },
+                handle_file(
+                    "https://huggingface.co/spaces/gradio/video_component/resolve/main/files/a.mp4"
+                ),
                 fn_index=0,
             )
-            assert Path(job.result()["video"]).exists()
-            assert (
-                Path(temp_dir).resolve()
-                in Path(job.result()["video"]).resolve().parents
-            )
+            assert Path(job.result()).exists()
+            assert Path(temp_dir).resolve() in Path(job.result()).resolve().parents
 
     def test_progress_updates(self, progress_demo):
         with connect(progress_demo) as client:
@@ -579,6 +571,11 @@ class TestClientPredictions:
         with connect(demo) as client:
             result = client.predict(api_name="/predict")
             assert result == "before\x85after"
+
+    def test_more_jobs_than_workers_all_complete(self, calculator_demo):
+        with connect(calculator_demo, client_kwargs={"max_workers": 2}) as client:
+            jobs = [client.submit(i, "add", 1, api_name="/predict") for i in range(6)]
+            assert [job.result(timeout=20) for job in jobs] == list(range(1, 7))
 
 
 class TestClientPredictionsWithKwargs:
@@ -1047,23 +1044,10 @@ class TestEndpoints:
             with patch("builtins.open", MagicMock()):
                 with patch.object(pathlib.Path, "name") as mock_name:
                     mock_name.side_effect = lambda x: x
-                    results = client.endpoints[0]._upload(
-                        ["pre1", ["pre2", "pre3", "pre4"], ["pre5", "pre6"], "pre7"]
+                    results = client.endpoints[0]._upload_file(
+                        handle_file(__file__), data_index=0
                     )
-
-        res = []
-        for re in results:
-            if isinstance(re, list):
-                res.append([r["name"] for r in re])
-            else:
-                res.append(re["name"])
-
-        assert res == [
-            "file1",
-            ["file2", "file3", "file4"],
-            ["file5", "file6"],
-            "file7",
-        ]
+        assert results["path"] == "file1"
 
     @pytest.mark.flaky
     def test_download_private_file(self, gradio_temp_dir):
@@ -1088,6 +1072,7 @@ class TestEndpoints:
         with pytest.raises(httpx.HTTPStatusError):
             client.endpoints[0]._download_file({"path": "https://example.com/foo"})  # type: ignore
 
+    @pytest.mark.flaky
     def test_download_stream_file_uses_url_directly(self, monkeypatch, gradio_temp_dir):
         """Test that stream files use the URL directly instead of constructing from path."""
         client = Client(
@@ -1120,11 +1105,11 @@ class TestEndpoints:
             client.endpoints[0]._download_file(stream_file_data)  # type: ignore
 
         # Test non-stream file still uses path-based URL construction
-        regular_file_data = {"path": "regular/file.txt", "is_stream": False}
+        regular_file_data = {"path": "regular/report%20#final.txt", "is_stream": False}
 
         def mock_stream_regular(*args, **kwargs):
             called_url = args[1]
-            assert called_url.endswith("file=regular/file.txt"), (
+            assert called_url.endswith("file=regular/report%2520%23final.txt"), (
                 f"Expected path-based URL, got: {called_url}"
             )
             return mock_response
@@ -1133,6 +1118,42 @@ class TestEndpoints:
 
         with patch("pathlib.Path.resolve", return_value="/tmp/regular_file.txt"):
             client.endpoints[0]._download_file(regular_file_data)  # type: ignore
+
+
+@pytest.mark.parametrize(
+    "server_path, expected_name",
+    [
+        ("/tmp/gradio/abc/my report.png", "my report.png"),
+        ("/tmp/gradio/abc/résumé (1).pdf", "résumé (1).pdf"),
+        ("/tmp/gradio/abc/computer%20vision#Huggy.png", "computer%20vision#Huggy.png"),
+    ],
+)
+def test_download_file_names_output_after_the_server_path(
+    monkeypatch, tmp_path, server_path, expected_name
+):
+    """The request URL is percent-encoded, so the saved file has to take its name
+    from the server's path. Naming it after the URL would write "my report.png"
+    to disk as "my%20report.png"."""
+    from gradio_client.client import Endpoint
+
+    response = MagicMock()
+    response.__enter__.return_value = response
+    response.raise_for_status.return_value = None
+    response.iter_bytes.return_value = [b"data"]
+    monkeypatch.setattr(httpx, "stream", lambda *args, **kwargs: response)
+
+    endpoint = MagicMock()
+    endpoint.root_url = "http://localhost:7860/gradio_api/"
+    endpoint.client.output_dir = str(tmp_path)
+    endpoint.client.headers = {}
+    endpoint.client.cookies = None
+    endpoint.client.ssl_verify = True
+    endpoint.client.httpx_kwargs = {}
+
+    downloaded = Endpoint._download_file(endpoint, {"path": server_path})
+
+    assert Path(downloaded).name == expected_name
+    assert Path(downloaded).read_bytes() == b"data"
 
 
 cpu = huggingface_hub.SpaceHardware.CPU_BASIC

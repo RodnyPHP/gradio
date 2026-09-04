@@ -1,5 +1,174 @@
 # @gradio/fileexplorer
 
+## 0.8.0
+
+### Dependency updates
+
+- @gradio/client@2.5.1
+
+## 0.8.0
+
+### Dependency updates
+
+- @gradio/client@2.5.0
+
+## 0.8.0
+
+### Features
+
+- [#13329](https://github.com/gradio-app/gradio/pull/13329) [`7ac583a`](https://github.com/gradio-app/gradio/commit/7ac583a38a4c995d172033ff6e3700390201ff21) - Make builds go zoom zoom.  Thanks @pngwn!
+
+### Dependency updates
+
+- @gradio/client@2.4.0
+- @gradio/utils@0.14.0
+- @gradio/atoms@0.26.1
+- @gradio/statustracker@0.15.2
+- @gradio/upload@0.18.2
+- @gradio/checkbox@0.8.2
+- @gradio/file@0.16.0
+
+## 0.7.1
+
+### Dependency updates
+
+- @gradio/statustracker@0.15.1
+- @gradio/icons@0.16.0
+- @gradio/atoms@0.26.0
+- @gradio/client@2.3.1
+- @gradio/upload@0.18.1
+- @gradio/file@0.15.1
+- @gradio/checkbox@0.8.1
+
+## 0.7.0
+
+### Features
+
+- [#13526](https://github.com/gradio-app/gradio/pull/13526) [`53cb4ca`](https://github.com/gradio-app/gradio/commit/53cb4cae1ec3521e9170d12867253516413ba37a) - Run `pnpm lint` and `pnpm ts:check` on CI.  Thanks @abidlabs!
+
+### Dependency updates
+
+- @gradio/atoms@0.25.0
+- @gradio/statustracker@0.15.0
+- @gradio/utils@0.13.0
+- @gradio/client@2.3.0
+- @gradio/upload@0.18.0
+- @gradio/checkbox@0.8.0
+- @gradio/file@0.15.0
+
+## 0.6.8
+
+### Dependency updates
+
+- @gradio/client@2.2.2
+
+## 0.6.8
+
+### Dependency updates
+
+- @gradio/client@2.2.1
+- @gradio/upload@0.17.10
+
+## 0.6.8
+
+### Dependency updates
+
+- @gradio/atoms@0.24.0
+- @gradio/statustracker@0.14.1
+- @gradio/checkbox@0.7.0
+- @gradio/upload@0.17.9
+- @gradio/file@0.14.8
+
+## 0.6.7
+
+### Dependency updates
+
+- @gradio/atoms@0.23.1
+- @gradio/statustracker@0.14.0
+- @gradio/client@2.2.0
+- @gradio/file@0.14.7
+- @gradio/checkbox@0.6.7
+
+## 0.6.6
+
+### Dependency updates
+
+- @gradio/utils@0.12.2
+- @gradio/atoms@0.23.0
+- @gradio/statustracker@0.13.1
+- @gradio/upload@0.17.8
+- @gradio/checkbox@0.6.6
+- @gradio/file@0.14.6
+
+## 0.6.5
+
+### Dependency updates
+
+- @gradio/utils@0.12.1
+- @gradio/statustracker@0.13.0
+- @gradio/checkbox@0.6.5
+- @gradio/file@0.14.5
+
+## 0.6.4
+
+### Dependency updates
+
+- @gradio/statustracker@0.12.5
+- @gradio/utils@0.12.0
+- @gradio/atoms@0.22.2
+- @gradio/upload@0.17.7
+- @gradio/checkbox@0.6.4
+- @gradio/file@0.14.4
+
+## 0.6.3
+
+### Dependency updates
+
+- @gradio/client@2.1.0
+
+## 0.6.3
+
+### Dependency updates
+
+- @gradio/utils@0.11.3
+- @gradio/atoms@0.22.0
+- @gradio/statustracker@0.12.4
+- @gradio/upload@0.17.6
+- @gradio/file@0.14.3
+- @gradio/checkbox@0.6.3
+
+## 0.6.2
+
+### Fixes
+
+- [#12810](https://github.com/gradio-app/gradio/pull/12810) [`7ed6dfa`](https://github.com/gradio-app/gradio/commit/7ed6dfaad6fa9c8e76a5596b20007dc97ae27ca7) - Migrate js/fileexplorer to svelte5.  Thanks @aliabid94!
+
+### Dependency updates
+
+- @gradio/atoms@0.21.0
+- @gradio/client@2.0.4
+- @gradio/statustracker@0.12.3
+- @gradio/file@0.14.2
+- @gradio/upload@0.17.5
+- @gradio/checkbox@0.6.2
+
+## 0.6.1
+
+### Fixes
+
+- [#12800](https://github.com/gradio-app/gradio/pull/12800) [`7a1c321`](https://github.com/gradio-app/gradio/commit/7a1c321b6546ba05a353488f5133e8262c4a8a39) - Bump svelte/kit for security reasons.  Thanks @freddyaboulton!
+
+### Dependency updates
+
+- @gradio/statustracker@0.12.2
+- @gradio/atoms@0.20.1
+- @gradio/utils@0.11.2
+- @gradio/icons@0.15.1
+- @gradio/upload@0.17.4
+- @gradio/client@2.0.3
+- @gradio/checkbox@0.6.1
+- @gradio/file@0.14.1
+
 ## 0.6.0
 
 ### Dependency updates

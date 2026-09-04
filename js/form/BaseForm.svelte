@@ -1,5 +1,19 @@
 <script lang="ts">
-	let { visible, scale, min_width } = $props();
+	import type { Snippet } from "svelte";
+
+	let {
+		visible = true,
+		scale = null,
+		min_width = 0,
+		label = undefined,
+		children
+	}: {
+		visible?: boolean | "hidden";
+		scale?: number | null;
+		min_width?: number;
+		label?: string;
+		children?: Snippet;
+	} = $props();
 </script>
 
 <div
@@ -8,8 +22,10 @@
 	class:hidden-css={visible === "hidden"}
 	style:flex-grow={scale}
 	style:min-width={`calc(min(${min_width}px, 100%))`}
+	role={label ? "group" : undefined}
+	aria-label={label}
 >
-	<slot />
+	{@render children?.()}
 </div>
 
 <style>
@@ -37,5 +53,9 @@
 
 	.hidden-css {
 		display: none !important;
+	}
+
+	div:not(:has(> :not(.hidden))) {
+		display: none;
 	}
 </style>

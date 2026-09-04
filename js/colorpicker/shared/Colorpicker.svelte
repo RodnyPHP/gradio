@@ -4,7 +4,7 @@
 	import { BlockTitle } from "@gradio/atoms";
 	import { click_outside } from "./events";
 	import { Eyedropper } from "@gradio/icons";
-	import { hsva_to_rgba, format_color } from "./utils";
+	import { hsva_to_rgba, format_color, normalize_color } from "./utils";
 
 	let {
 		value = $bindable(),
@@ -13,6 +13,7 @@
 		disabled,
 		show_label,
 		on_input = () => {},
+		on_release = () => {},
 		on_submit = () => {},
 		on_blur = () => {},
 		on_focus = () => {}
@@ -23,6 +24,7 @@
 		disabled: boolean;
 		show_label: boolean;
 		on_input?: () => void;
+		on_release?: () => void;
 		on_submit?: () => void;
 		on_blur?: () => void;
 		on_focus?: () => void;
@@ -32,6 +34,10 @@
 	let current_mode: "hex" | "rgb" | "hsl" = $state("hex");
 
 	let eyedropper_supported = false;
+
+	let wrapper: HTMLDivElement;
+	let dialog_button: HTMLButtonElement;
+	let has_focus = false;
 
 	let sl_wrap: HTMLDivElement;
 	let hue_wrap: HTMLDivElement;
@@ -98,8 +104,12 @@
 	}
 
 	function handle_end(): void {
+		const should_dispatch_release = sl_moving || hue_moving;
 		sl_moving = false;
 		hue_moving = false;
+		if (should_dispatch_release) {
+			on_release();
+		}
 	}
 
 	async function update_mouse_from_color(color: string): Promise<void> {
@@ -150,8 +160,36 @@
 		eyedropper_supported = window !== undefined && !!window.EyeDropper;
 	});
 
-	function handle_click_outside(): void {
+	function handle_focusin(): void {
+		if (!has_focus) {
+			has_focus = true;
+			on_focus();
+		}
+	}
+
+	function handle_focusout(event: FocusEvent): void {
+		if (event.relatedTarget && wrapper.contains(event.relatedTarget as Node)) {
+			return;
+		}
+		if (has_focus) {
+			has_focus = false;
+			on_blur();
+		}
+	}
+
+	function handle_click_outside(event: MouseEvent): void {
+		// click_outside is bound to the dialog, so the swatch (outside it, but
+		// inside the component) triggers this too; let its onclick handle the toggle.
+		if (dialog_button.contains(event.target as Node)) {
+			return;
+		}
 		dialog_open = false;
+		// The focused element is removed with the dialog, so no focusout fires;
+		// dispatch blur here instead.
+		if (has_focus) {
+			has_focus = false;
+			on_blur();
+		}
 	}
 
 	$effect(() => {
@@ -160,80 +198,114 @@
 </script>
 
 <BlockTitle {show_label} {info}>{label}</BlockTitle>
-<button
-	class="dialog-button"
-	style:background={value}
-	{disabled}
-	on:click={() => {
-		update_mouse_from_color(value);
-		dialog_open = !dialog_open;
-	}}
-/>
 
-<svelte:window on:mousemove={handle_move} on:mouseup={handle_end} />
+<svelte:window onmousemove={handle_move} onmouseup={handle_end} />
 
-{#if dialog_open}
-	<div
-		class="color-picker"
-		on:focus
-		on:blur
-		use:click_outside={handle_click_outside}
-	>
-		<!-- svelte-ignore a11y-no-static-element-interactions -->
+<div
+	bind:this={wrapper}
+	onfocusin={handle_focusin}
+	onfocusout={handle_focusout}
+>
+	<button
+		class="dialog-button"
+		bind:this={dialog_button}
+		aria-label={label}
+		style:background={value}
+		{disabled}
+		onclick={() => {
+			update_mouse_from_color(value);
+			dialog_open = !dialog_open;
+		}}
+	/>
+
+	{#if dialog_open}
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div
-			class="color-gradient"
-			on:mousedown={handle_sl_down}
-			style="--hue:{hue}"
-			bind:this={sl_wrap}
+			class="color-picker"
+			onmousedown={(e) => {
+				// Keep focus where it is, as Dropdown does for its options:
+				// letting focus fall to body (padding clicks, or button clicks
+				// on browsers where buttons don't take focus) fires a premature
+				// blur. Only the text input needs mouse focus.
+				if (!(e.target instanceof HTMLInputElement)) {
+					e.preventDefault();
+				}
+			}}
+			use:click_outside={handle_click_outside}
 		>
 			<div
-				class="marker"
-				style:transform="translate({sl_marker_pos[0]}px,{sl_marker_pos[1]}px)"
-				style:background={value}
-			/>
-		</div>
-		<!-- svelte-ignore a11y-no-static-element-interactions -->
-		<div class="hue-slider" on:mousedown={handle_hue_down} bind:this={hue_wrap}>
+				class="color-gradient"
+				role="slider"
+				aria-label="Saturation and brightness"
+				aria-valuetext={value}
+				tabindex="0"
+				onmousedown={handle_sl_down}
+				style="--hue:{hue}"
+				bind:this={sl_wrap}
+			>
+				<div
+					class="marker"
+					style:transform="translate({sl_marker_pos[0]}px,{sl_marker_pos[1]}px)"
+					style:background={value}
+				/>
+			</div>
 			<div
-				class="marker"
-				style:background={"hsl(" + hue + ", 100%, 50%)"}
-				style:transform="translateX({hue_marker_pos}px)"
-			/>
-		</div>
+				class="hue-slider"
+				role="slider"
+				aria-label="Hue"
+				aria-valuemin={0}
+				aria-valuemax={360}
+				aria-valuenow={Math.round(hue)}
+				tabindex="0"
+				onmousedown={handle_hue_down}
+				bind:this={hue_wrap}
+			>
+				<div
+					class="marker"
+					style:background={"hsl(" + hue + ", 100%, 50%)"}
+					style:transform="translateX({hue_marker_pos}px)"
+				/>
+			</div>
 
-		<div class="input">
-			<button class="swatch" style:background={value}></button>
-			<div>
-				<div class="input-wrap">
-					<input
-						type="text"
-						bind:value={color_string}
-						on:change={(e) => {
-							value = e.currentTarget.value;
-						}}
-					/>
-					<button class="eyedropper" on:click={request_eyedropper}>
-						{#if eyedropper_supported}
-							<Eyedropper />
-						{/if}
-					</button>
-				</div>
+			<div class="input">
+				<button class="swatch" style:background={value}></button>
+				<div>
+					<div class="input-wrap">
+						<input
+							type="text"
+							bind:value={color_string}
+							onchange={(e) => {
+								value = normalize_color(e.currentTarget.value);
+							}}
+							onkeydown={(e) => {
+								if (e.key === "Enter") {
+									on_submit();
+								}
+							}}
+						/>
+						<button class="eyedropper" onclick={request_eyedropper}>
+							{#if eyedropper_supported}
+								<Eyedropper />
+							{/if}
+						</button>
+					</div>
 
-				<div class="buttons">
-					{#each modes as [label, value]}
-						<button
-							class="button"
-							class:active={current_mode === value}
-							on:click={() => {
-								current_mode = value;
-							}}>{label}</button
-						>
-					{/each}
+					<div class="buttons">
+						{#each modes as [label, value]}
+							<button
+								class="button"
+								class:active={current_mode === value}
+								onclick={() => {
+									current_mode = value;
+								}}>{label}</button
+							>
+						{/each}
+					</div>
 				</div>
 			</div>
 		</div>
-	</div>
-{/if}
+	{/if}
+</div>
 
 <style>
 	.dialog-button {

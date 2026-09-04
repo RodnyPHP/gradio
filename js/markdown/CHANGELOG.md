@@ -1,5 +1,126 @@
 # @gradio/markdown
 
+## 0.14.2
+
+### Dependency updates
+
+- @gradio/utils@0.14.0
+- @gradio/atoms@0.26.1
+- @gradio/statustracker@0.15.2
+- @gradio/markdown-code@0.10.0
+
+## 0.14.1
+
+### Dependency updates
+
+- @gradio/statustracker@0.15.1
+- @gradio/icons@0.16.0
+- @gradio/atoms@0.26.0
+
+## 0.14.0
+
+### Features
+
+- [#13526](https://github.com/gradio-app/gradio/pull/13526) [`53cb4ca`](https://github.com/gradio-app/gradio/commit/53cb4cae1ec3521e9170d12867253516413ba37a) - Run `pnpm lint` and `pnpm ts:check` on CI.  Thanks @abidlabs!
+
+### Dependency updates
+
+- @gradio/atoms@0.25.0
+- @gradio/statustracker@0.15.0
+- @gradio/utils@0.13.0
+- @gradio/markdown-code@0.9.0
+
+## 0.13.35
+
+### Fixes
+
+- [#13451](https://github.com/gradio-app/gradio/pull/13451) [`29bd7a0`](https://github.com/gradio-app/gradio/commit/29bd7a00fc087df5f8d9780b5e1082729fc5ffb0) - `gr.Dropdown()` Fixes.  Thanks @dawoodkhan82!
+
+## 0.13.34
+
+### Dependency updates
+
+- @gradio/markdown-code@0.8.0
+
+## 0.13.33
+
+### Fixes
+
+- [#13269](https://github.com/gradio-app/gradio/pull/13269) [`e9c963e`](https://github.com/gradio-app/gradio/commit/e9c963e1e8cf06849ddac15d004384331e3dc10e) - Unit tests for js/paramviewer, js/timer, js/markdown.  Thanks @freddyaboulton!
+
+### Dependency updates
+
+- @gradio/atoms@0.24.0
+- @gradio/statustracker@0.14.1
+
+## 0.13.32
+
+### Dependency updates
+
+- @gradio/atoms@0.23.1
+- @gradio/statustracker@0.14.0
+- @gradio/markdown-code@0.7.0
+
+## 0.13.31
+
+### Dependency updates
+
+- @gradio/utils@0.12.2
+- @gradio/atoms@0.23.0
+- @gradio/statustracker@0.13.1
+
+## 0.13.30
+
+### Dependency updates
+
+- @gradio/utils@0.12.1
+- @gradio/statustracker@0.13.0
+
+## 0.13.29
+
+### Fixes
+
+- [#12958](https://github.com/gradio-app/gradio/pull/12958) [`bb127c7`](https://github.com/gradio-app/gradio/commit/bb127c74bd6301e3782e0ce4744161ae976a8481) - ensure `show_progress` works as expected in `gr.Markdown`.  Thanks @hannahblair!
+
+### Dependency updates
+
+- @gradio/statustracker@0.12.5
+- @gradio/utils@0.12.0
+- @gradio/atoms@0.22.2
+- @gradio/markdown-code@0.6.1
+
+## 0.13.28
+
+### Dependency updates
+
+- @gradio/utils@0.11.3
+- @gradio/atoms@0.22.0
+- @gradio/statustracker@0.12.4
+
+## 0.13.27
+
+### Dependency updates
+
+- @gradio/atoms@0.21.0
+- @gradio/statustracker@0.12.3
+
+## 0.13.26
+
+### Fixes
+
+- [#12800](https://github.com/gradio-app/gradio/pull/12800) [`7a1c321`](https://github.com/gradio-app/gradio/commit/7a1c321b6546ba05a353488f5133e8262c4a8a39) - Bump svelte/kit for security reasons.  Thanks @freddyaboulton!
+- [#12779](https://github.com/gradio-app/gradio/pull/12779) [`ea2d3e9`](https://github.com/gradio-app/gradio/commit/ea2d3e985a8b42d188e551f517c5825c00790628) - Migrate Audio + Upload + Atoms to Svelte 5.  Thanks @dawoodkhan82!
+- [#12771](https://github.com/gradio-app/gradio/pull/12771) [`404f6a5`](https://github.com/gradio-app/gradio/commit/404f6a55be4cd0c1ece4af6edb8a7769473fb650) - Migrate Markdown components to svelte 5.  Thanks @freddyaboulton!
+- [#12795](https://github.com/gradio-app/gradio/pull/12795) [`184968a`](https://github.com/gradio-app/gradio/commit/184968aa13636b5afe78f8ae443cd7fc29635bfa) - Add fade effect to overflowing text.  Thanks @hannahblair!
+
+### Dependency updates
+
+- @gradio/statustracker@0.12.2
+- @gradio/atoms@0.20.1
+- @gradio/utils@0.11.2
+- @gradio/icons@0.15.1
+- @gradio/markdown-code@0.6.1
+
 ## 0.13.25
 
 ### Fixes

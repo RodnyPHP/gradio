@@ -1,8 +1,11 @@
 import * as fs from "fs";
-import { join } from "path";
+import { join, dirname } from "path";
+import { fileURLToPath, pathToFileURL } from "url";
+
 import { build } from "vite";
-import { plugins, make_gradio_plugin, deepmerge_plugin } from "./plugins";
 import type { PreRenderedChunk } from "rollup";
+
+import { plugins, make_gradio_plugin } from "./plugins";
 import { examine_module } from "./index";
 
 interface BuildOptions {
@@ -10,6 +13,8 @@ interface BuildOptions {
 	root_dir: string;
 	python_path: string;
 }
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export async function make_build({
 	component_dir,
@@ -51,7 +56,7 @@ export async function make_build({
 				fs.existsSync(join(comp.frontend_dir, "gradio.config.js"))
 			) {
 				const m = await import(
-					join("file://" + comp.frontend_dir, "gradio.config.js")
+					pathToFileURL(join(comp.frontend_dir, "gradio.config.js")).href
 				);
 
 				component_config.plugins = m.default.plugins || [];
@@ -62,25 +67,40 @@ export async function make_build({
 			}
 
 			const exports: (string | any)[][] = [
-				["component", pkg.exports["."] as object],
-				["example", pkg.exports["./example"] as object]
-			].filter(([_, path]) => !!path);
+				[
+					join(template_dir, "component"),
+					[
+						join(__dirname, "svelte_runtime_entry.js"),
+						join(source_dir, pkg.exports["."].gradio)
+					]
+				],
+				...(pkg.exports["./example"]
+					? [
+							[
+								join(template_dir, "example"),
+								[
+									join(__dirname, "svelte_runtime_entry.js"),
+									join(source_dir, pkg.exports["./example"].gradio)
+								]
+							]
+						]
+					: [])
+			];
 
-			for (const [entry, path] of exports) {
+			for (const [out_path, entry_path] of exports) {
 				try {
 					const x = await build({
 						root: source_dir,
 						configFile: false,
 						plugins: [
 							...plugins(component_config),
-							make_gradio_plugin({ mode: "build", svelte_dir }),
-							deepmerge_plugin
+							make_gradio_plugin({ svelte_dir, component_dir })
 						],
 						build: {
 							emptyOutDir: true,
-							outDir: join(template_dir, entry as string),
+							outDir: out_path,
 							lib: {
-								entry: join(source_dir, (path as any).gradio),
+								entry: entry_path,
 								fileName: "index.js",
 								formats: ["es"]
 							},
@@ -95,10 +115,13 @@ export async function make_build({
 										return chunkInfo.names[0];
 									},
 									entryFileNames: (chunkInfo: PreRenderedChunk) => {
-										if (chunkInfo.isEntry) {
-											return "index.js";
+										if (
+											chunkInfo.name.toLocaleLowerCase() ===
+											"svelte_runtime_entry"
+										) {
+											return "svelte_runtime_entry.js";
 										}
-										return `${chunkInfo.name.toLocaleLowerCase()}.js`;
+										return "index.js";
 									}
 								}
 							}

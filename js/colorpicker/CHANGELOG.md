@@ -1,5 +1,112 @@
 # @gradio/colorpicker
 
+## 0.5.15
+
+### Fixes
+
+- [#13658](https://github.com/gradio-app/gradio/pull/13658) [`bad052c`](https://github.com/gradio-app/gradio/commit/bad052c132c7f812fe1a4c91a8ed521af3317cad) - Fix ColorPicker dispatching blur while the user is still using the picker dialog.  Thanks @hysts!
+
+### Dependency updates
+
+- @gradio/utils@0.14.0
+- @gradio/atoms@0.26.1
+- @gradio/statustracker@0.15.2
+
+## 0.5.14
+
+### Dependency updates
+
+- @gradio/statustracker@0.15.1
+- @gradio/icons@0.16.0
+- @gradio/atoms@0.26.0
+
+## 0.5.13
+
+### Dependency updates
+
+- @gradio/atoms@0.25.0
+- @gradio/statustracker@0.15.0
+- @gradio/utils@0.13.0
+
+## 0.5.12
+
+### Fixes
+
+- [#13363](https://github.com/gradio-app/gradio/pull/13363) [`0872f5e`](https://github.com/gradio-app/gradio/commit/0872f5eccad07a140ed5e24e3adddc661667ff9a) - add colour picker unit tests.  Thanks @hannahblair!
+
+## 0.5.11
+
+### Dependency updates
+
+- @gradio/atoms@0.24.0
+- @gradio/statustracker@0.14.1
+
+## 0.5.10
+
+### Dependency updates
+
+- @gradio/atoms@0.23.1
+- @gradio/statustracker@0.14.0
+
+## 0.5.9
+
+### Fixes
+
+- [#13126](https://github.com/gradio-app/gradio/pull/13126) [`a09c0e8`](https://github.com/gradio-app/gradio/commit/a09c0e891709e007e4f265fc48f466175f5a2a22) - normalize ColorPicker value to hex string format.  Thanks @Krishnachaitanyakc!
+
+### Dependency updates
+
+- @gradio/utils@0.12.2
+- @gradio/atoms@0.23.0
+- @gradio/statustracker@0.13.1
+
+## 0.5.8
+
+### Dependency updates
+
+- @gradio/utils@0.12.1
+- @gradio/statustracker@0.13.0
+
+## 0.5.7
+
+### Dependency updates
+
+- @gradio/statustracker@0.12.5
+- @gradio/utils@0.12.0
+- @gradio/atoms@0.22.2
+
+## 0.5.6
+
+### Fixes
+
+- [#12862](https://github.com/gradio-app/gradio/pull/12862) [`a8e6b7b`](https://github.com/gradio-app/gradio/commit/a8e6b7ba1e6af793b6a200d4cc6b07f3151f229e) - Fix ColorPicker not firing focus, blur, or submit events after Svelte 5 migration.  Thanks @veeceey!
+
+### Dependency updates
+
+- @gradio/utils@0.11.3
+- @gradio/atoms@0.22.0
+- @gradio/statustracker@0.12.4
+
+## 0.5.5
+
+### Dependency updates
+
+- @gradio/atoms@0.21.0
+- @gradio/statustracker@0.12.3
+
+## 0.5.4
+
+### Fixes
+
+- [#12800](https://github.com/gradio-app/gradio/pull/12800) [`7a1c321`](https://github.com/gradio-app/gradio/commit/7a1c321b6546ba05a353488f5133e8262c4a8a39) - Bump svelte/kit for security reasons.  Thanks @freddyaboulton!
+
+### Dependency updates
+
+- @gradio/statustracker@0.12.2
+- @gradio/atoms@0.20.1
+- @gradio/utils@0.11.2
+- @gradio/icons@0.15.1
+
 ## 0.5.3
 
 ### Fixes

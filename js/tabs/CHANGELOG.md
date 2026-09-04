@@ -1,5 +1,108 @@
 # @gradio/tabs
 
+## 0.10.0
+
+### Features
+
+- [#13329](https://github.com/gradio-app/gradio/pull/13329) [`7ac583a`](https://github.com/gradio-app/gradio/commit/7ac583a38a4c995d172033ff6e3700390201ff21) - Make builds go zoom zoom.  Thanks @pngwn!
+
+### Fixes
+
+- [#13639](https://github.com/gradio-app/gradio/pull/13639) [`1535d69`](https://github.com/gradio-app/gradio/commit/1535d695af964793e27fa55ec1f047dd64de5c9d) - Fix hidden tab focus and label overflow menu.  Thanks @dawoodkhan82!
+
+### Dependency updates
+
+- @gradio/utils@0.14.0
+
+## 0.9.0
+
+### Features
+
+- [#13543](https://github.com/gradio-app/gradio/pull/13543) [`0533483`](https://github.com/gradio-app/gradio/commit/0533483bccdee38f334a598f18297e8c02966343) - Migrate Image components to Svelte 5.  Thanks @dawoodkhan82!
+
+## 0.8.0
+
+### Features
+
+- [#13526](https://github.com/gradio-app/gradio/pull/13526) [`53cb4ca`](https://github.com/gradio-app/gradio/commit/53cb4cae1ec3521e9170d12867253516413ba37a) - Run `pnpm lint` and `pnpm ts:check` on CI.  Thanks @abidlabs!
+
+### Dependency updates
+
+- @gradio/utils@0.13.0
+
+## 0.7.0
+
+### Features
+
+- [#13509](https://github.com/gradio-app/gradio/pull/13509) [`dcd072c`](https://github.com/gradio-app/gradio/commit/dcd072cd57f09ffd2dc5f97ae6afc505894824a6) - Migrate Chatbot, Tabs, TabItem to Svelte 5.  Thanks @dawoodkhan82!
+
+## 0.6.0
+
+### Features
+
+- [#13467](https://github.com/gradio-app/gradio/pull/13467) [`feba2e1`](https://github.com/gradio-app/gradio/commit/feba2e1e41c68f4bbdacf4c963d8d9689d4b3346) - `Tab`, `TabItem`, `Plot` Unit tests.  Thanks @dawoodkhan82!
+
+## 0.5.11
+
+### Fixes
+
+- [#13240](https://github.com/gradio-app/gradio/pull/13240) [`0d670ad`](https://github.com/gradio-app/gradio/commit/0d670adf41a0b510f7fd745495dce1664d38f0e5) - Fix browser freeze when a dataframe's value is set (e.g. via a tab select event), and only dispatch the tabs select event when the selected tab actually changes.  Thanks @freddyaboulton!
+
+## 0.5.10
+
+### Fixes
+
+- [#13303](https://github.com/gradio-app/gradio/pull/13303) [`79c5776`](https://github.com/gradio-app/gradio/commit/79c577680978adfb5eeaa01944635e14dc67e5f1) - Rework `Dataframe` wrapping, truncation, and column width sizing.  Thanks @pngwn!
+
+## 0.5.9
+
+### Fixes
+
+- [#13048](https://github.com/gradio-app/gradio/pull/13048) [`a5d4096`](https://github.com/gradio-app/gradio/commit/a5d40965bba21a832da522127048926b71c1a6dd) - Fix Tab Interactive Bug.  Thanks @freddyaboulton!
+
+### Dependency updates
+
+- @gradio/utils@0.12.2
+
+## 0.5.8
+
+### Dependency updates
+
+- @gradio/utils@0.12.1
+
+## 0.5.8
+
+### Dependency updates
+
+- @gradio/utils@0.12.0
+
+## 0.5.7
+
+### Fixes
+
+- [#12925](https://github.com/gradio-app/gradio/pull/12925) [`ccff8b8`](https://github.com/gradio-app/gradio/commit/ccff8b8cacffe36a270fcea9fc8ba29b78c31c8d) - Walkthrough Selected Bug.  Thanks @freddyaboulton!
+
+## 0.5.6
+
+### Fixes
+
+- [#12846](https://github.com/gradio-app/gradio/pull/12846) [`226daba`](https://github.com/gradio-app/gradio/commit/226daba5f65257244efc7c310500ea5366b20a87) - Fix bug where children of accordions dont get rendered when they are opened programmatically.  Thanks @freddyaboulton!
+
+### Dependency updates
+
+- @gradio/utils@0.11.3
+
+## 0.5.5
+
+### Fixes
+
+- [#12800](https://github.com/gradio-app/gradio/pull/12800) [`7a1c321`](https://github.com/gradio-app/gradio/commit/7a1c321b6546ba05a353488f5133e8262c4a8a39) - Bump svelte/kit for security reasons.  Thanks @freddyaboulton!
+- [#12693](https://github.com/gradio-app/gradio/pull/12693) [`b48da51`](https://github.com/gradio-app/gradio/commit/b48da517d2daa62d3b201f9a84bef9352d485b38) - Fix bug where Walkthrough Component Freezes.  Thanks @freddyaboulton!
+
+### Dependency updates
+
+- @gradio/utils@0.11.2
+
 ## 0.5.4
 
 ### Dependency updates

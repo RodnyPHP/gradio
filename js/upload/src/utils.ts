@@ -1,5 +1,65 @@
+export function is_valid_mimetype(
+	file_accept: string | string[] | null,
+	uploaded_file_name: string,
+	uploaded_file_type: string
+): boolean {
+	if (
+		!file_accept ||
+		file_accept === "*" ||
+		file_accept === "file/*" ||
+		(Array.isArray(file_accept) &&
+			file_accept.some((accept) => accept === "*" || accept === "file/*"))
+	) {
+		return true;
+	}
+	let acceptArray: string[];
+	if (typeof file_accept === "string") {
+		acceptArray = file_accept.split(",").map((s) => s.trim());
+	} else if (Array.isArray(file_accept)) {
+		acceptArray = file_accept;
+	} else {
+		return false;
+	}
+
+	const file_name = uploaded_file_name.toLowerCase();
+	return (
+		acceptArray.some((type) => {
+			if (!type.startsWith(".")) return false;
+			const ext = type.toLowerCase();
+			return file_name.length > ext.length && file_name.endsWith(ext);
+		}) ||
+		acceptArray.some((type) => {
+			const [category] = type.split("/").map((s) => s.trim());
+			return (
+				type.endsWith("/*") && uploaded_file_type.startsWith(category + "/")
+			);
+		})
+	);
+}
+
+export function to_accept_attribute(
+	file_accept: string | string[] | null
+): string | undefined {
+	if (file_accept == null) return undefined;
+	const types = Array.isArray(file_accept)
+		? file_accept
+		: file_accept.split(",");
+	const widened = new Set<string>();
+	for (const raw of types) {
+		const type = raw.trim();
+		if (!type) continue;
+		widened.add(type);
+		const last_dot = type.lastIndexOf(".");
+		if (type.startsWith(".") && last_dot > 0) {
+			widened.add(type.slice(last_dot));
+		}
+	}
+	return Array.from(widened).join(", ");
+}
+
 interface DragActionOptions {
 	disable_click?: boolean;
+	ignore_click_selector?: string;
 	accepted_types?: string | string[] | null;
 	mode?: "single" | "multiple" | "directory";
 	on_drag_change?: (dragging: boolean) => void;
@@ -34,9 +94,9 @@ export function create_drag(): {
 				hidden_input.style.display = "none";
 				hidden_input.setAttribute("aria-label", "File upload");
 				hidden_input.setAttribute("data-testid", "file-upload");
-				const accept_options = Array.isArray(_options.accepted_types)
-					? _options.accepted_types.join(",")
-					: _options.accepted_types || undefined;
+				const accept_options = to_accept_attribute(
+					_options.accepted_types ?? null
+				);
 
 				if (accept_options) {
 					hidden_input.accept = accept_options;
@@ -82,11 +142,20 @@ export function create_drag(): {
 				}
 			}
 
-			function handle_click(): void {
-				if (!_options.disable_click) {
-					hidden_input.value = "";
-					hidden_input.click();
+			function handle_click(e: MouseEvent): void {
+				const target = e.target;
+				const ignored_click_selector = _options.ignore_click_selector;
+				if (
+					_options.disable_click ||
+					(ignored_click_selector &&
+						target instanceof Element &&
+						target.closest(ignored_click_selector) !== null)
+				) {
+					return;
 				}
+
+				hidden_input.value = "";
+				hidden_input.click();
 			}
 
 			function handle_file_input_change(): void {

@@ -9,15 +9,19 @@ from .commands import (
     custom_component,
     deploy,
     hf_login,
+    info,
     load_app,
+    predict,
     print_environment_info,
     reload,
     sketch,
+    skills_app,
     upload_mcp,
 )
 
 app = typer.Typer()
 app.add_typer(load_app, name="load")
+app.add_typer(skills_app, name="skills")
 app.command("environment", help="Print Gradio environment information.")(
     print_environment_info
 )
@@ -26,13 +30,30 @@ app.command(
     help="Deploy a Gradio app to Spaces or Google Cloud Run. Must be called within the directory you would like to deploy.",
 )(deploy)
 app.command("sketch", help="Open the Sketch app to design a Gradio app.")(sketch)
+app.command(
+    "info",
+    help="Fetches the expected JSON payload for all of a Gradio app's endpoints.",
+)(info)
+app.command(
+    "predict",
+    help="Sends a prediction request to a Gradio app endpoint.",
+)(predict)
 
 
 def cli():
     args = sys.argv[1:]
     if len(args) == 0:
         raise ValueError("No file specified.")
-    if args[0] in {"deploy", "environment", "deploy-discord", "sketch", "load"}:
+    if args[0] in {
+        "deploy",
+        "environment",
+        "deploy-discord",
+        "sketch",
+        "load",
+        "skills",
+        "info",
+        "predict",
+    }:
         app()
     elif args[0] in {"cc", "component"}:
         sys.argv = sys.argv[1:]
@@ -73,6 +94,6 @@ demo.launch()"""
         hf_login()
 
         sys.argv = ["gradio", str(demo_path)]
-        typer.run(reload)
+        reload()
     else:
-        typer.run(reload)
+        reload()

@@ -1,10 +1,11 @@
-import type { Config } from "../types";
+import type { ClientOptions, Config } from "../types";
 import {
 	CONFIG_ERROR_MSG,
 	CONFIG_URL,
 	INVALID_CREDENTIALS_MSG,
 	LOGIN_URL,
 	MISSING_CREDENTIALS_MSG,
+	PRIVATE_SPACE_MSG,
 	SPACE_METADATA_ERROR_MSG,
 	UNAUTHORIZED_MSG
 } from "../constants";
@@ -53,6 +54,22 @@ export async function get_jwt(
 	}
 }
 
+/**
+ * The `hf_token` option was renamed to `token`, but a lot of existing code
+ * (and the Python client) still uses `hf_token`. Accept it as an alias so
+ * that authenticated requests are not silently sent without credentials,
+ * which previously surfaced as "Could not resolve app config" errors when
+ * connecting to private Spaces.
+ */
+export function normalise_token_option(options: ClientOptions): void {
+	if (options.hf_token && !options.token) {
+		options.token = options.hf_token;
+		console.warn(
+			"The `hf_token` option has been renamed to `token`. Support for `hf_token` will be removed in a future version of @gradio/client."
+		);
+	}
+}
+
 export function map_names_to_ids(
 	fns: Config["dependencies"]
 ): Record<string, number> {
@@ -64,25 +81,54 @@ export function map_names_to_ids(
 	return apis;
 }
 
+export function resolve_config_root(
+	root: string,
+	current_location: string,
+	prioritize_current_location = false
+): string {
+	const current_url = new URL(current_location);
+	const root_url = new URL(root, current_url);
+	// Modern Colab configs can omit is_colab even though the backend root still
+	// uses one of Colab's internal-only hostname families.
+	const is_colab_runtime =
+		root_url.hostname.endsWith(".colab-user-runtimes.internal") ||
+		root_url.hostname.endsWith(".codatalab-user-runtimes.internal");
+	if (prioritize_current_location || is_colab_runtime) {
+		return new URL(new URL(root, current_url).pathname, current_url)
+			.toString()
+			.replace(/\/$/, "");
+	}
+
+	if (root_url.hostname !== current_url.hostname) {
+		return root;
+	}
+
+	root_url.protocol = current_url.protocol;
+	root_url.host = current_url.host;
+	return root_url.toString().replace(/\/$/, "");
+}
+
 export async function resolve_config(
 	this: Client,
-	endpoint: string
+	endpoint: string,
+	strip_current_page = true
 ): Promise<Config | undefined> {
 	const headers: Record<string, string> = this.options.token
 		? { Authorization: `Bearer ${this.options.token}` }
 		: {};
-
-	headers["Content-Type"] = "application/json";
 
 	if (
 		typeof window !== "undefined" &&
 		window.gradio_config &&
 		location.origin !== "http://localhost:9876"
 	) {
-		if (window.gradio_config.current_page) {
+		if (strip_current_page && window.gradio_config.current_page) {
 			endpoint = endpoint.substring(0, endpoint.lastIndexOf("/"));
 		}
-		if (window.gradio_config.dev_mode) {
+		if (
+			window.gradio_config.dev_mode ||
+			(typeof window !== "undefined" && window?.BUILD_MODE === "dev")
+		) {
 			let config_url = join_urls(
 				endpoint,
 				this.deep_link
@@ -91,22 +137,28 @@ export async function resolve_config(
 			);
 			const response = await this.fetch(config_url, {
 				headers,
-				credentials: "include"
+				credentials: this.options.credentials ?? "same-origin"
 			});
-			const config = await handleConfigResponse(
-				response,
-				endpoint,
-				!!this.options.auth
-			);
+			const config = await handleConfigResponse(response, !!this.options.auth);
+			config.root = endpoint || config.root;
 			// @ts-ignore
 			window.gradio_config = {
 				...config,
 				current_page: window.gradio_config.current_page
 			};
 		}
-		window.gradio_config.root = endpoint;
-		// @ts-ignore
-		return { ...window.gradio_config } as Config;
+		// The page was rendered by this Gradio server, so a same-host root may
+		// contain an internal protocol or port supplied by a reverse proxy. Keep
+		// the configured path, but use the browser-visible origin for requests
+		// made by the client itself (queue, upload, reset, etc.). Colab's public
+		// proxy uses a different hostname, so always prefer the browser origin.
+		const config = { ...window.gradio_config } as unknown as Config;
+		config.root = resolve_config_root(
+			config.root,
+			location.href,
+			config.is_colab
+		);
+		return config;
 	} else if (endpoint) {
 		let config_url = join_urls(
 			endpoint,
@@ -115,10 +167,16 @@ export async function resolve_config(
 
 		const response = await this.fetch(config_url, {
 			headers,
-			credentials: "include"
+			credentials: this.options.credentials ?? "same-origin"
 		});
 
-		return handleConfigResponse(response, endpoint, !!this.options.auth);
+		const config = await handleConfigResponse(response, !!this.options.auth);
+		// Preserve the backend-provided root if available (it contains the correct public URL)
+		// Only fall back to endpoint if the backend didn't provide a root
+		if (!config.root) {
+			config.root = endpoint;
+		}
+		return config;
 	}
 
 	throw new Error(CONFIG_ERROR_MSG);
@@ -126,11 +184,17 @@ export async function resolve_config(
 
 async function handleConfigResponse(
 	response: Response,
-	endpoint: string,
 	authorized: boolean
 ): Promise<Config> {
 	if (response?.status === 401 && !authorized) {
-		const error_data = await response.json();
+		let error_data: any = null;
+		try {
+			error_data = await response.json();
+		} catch (e) {
+			// Unauthenticated requests to private Spaces receive a non-JSON 401
+			// page from the Hugging Face proxy rather than a Gradio auth payload.
+			throw new Error(PRIVATE_SPACE_MSG);
+		}
 		const auth_message = error_data?.detail?.auth_message;
 		throw new Error(auth_message || MISSING_CREDENTIALS_MSG);
 	} else if (response?.status === 401 && authorized) {
@@ -149,7 +213,9 @@ async function handleConfigResponse(
 		throw new Error(UNAUTHORIZED_MSG);
 	}
 
-	throw new Error(CONFIG_ERROR_MSG);
+	throw new Error(
+		`${CONFIG_ERROR_MSG}(received status ${response?.status} when fetching the app config)`
+	);
 }
 
 export async function resolve_cookies(this: Client): Promise<void> {
@@ -165,7 +231,8 @@ export async function resolve_cookies(this: Client): Promise<void> {
 				host,
 				this.options.auth,
 				this.fetch,
-				this.options.token
+				this.options.token,
+				this.options.credentials
 			);
 
 			if (cookie_header) this.set_cookies(cookie_header);
@@ -181,7 +248,8 @@ export async function get_cookie_header(
 	host: string,
 	auth: [string, string],
 	_fetch: typeof fetch,
-	token?: `hf_${string}`
+	token?: `hf_${string}`,
+	credentials?: RequestCredentials
 ): Promise<string | null> {
 	const formData = new FormData();
 	formData.append("username", auth?.[0]);
@@ -197,7 +265,7 @@ export async function get_cookie_header(
 		headers,
 		method: "POST",
 		body: formData,
-		credentials: "include"
+		credentials: credentials ?? "same-origin"
 	});
 
 	if (res.status === 200) {

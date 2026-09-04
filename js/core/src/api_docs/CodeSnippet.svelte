@@ -1,75 +1,86 @@
 <script lang="ts">
-	import type { ComponentMeta, Dependency, Payload } from "../types";
+	import type { Dependency, Payload } from "../types";
 	import CopyButton from "./CopyButton.svelte";
-	import { represent_value, is_potentially_nested_file_data } from "./utils";
 	import { Block } from "@gradio/atoms";
 	import EndpointDetail from "./EndpointDetail.svelte";
 
-	interface EndpointParameter {
-		label: string;
-		type: string;
-		python_type: { type: string };
-		component: string;
-		example_input: string;
-		serializer: string;
-	}
+	let {
+		dependency,
+		current_language,
+		api_description = null,
+		analytics,
+		code_snippets,
+		last_api_call = null,
+		cli_command = ""
+	}: {
+		dependency: Dependency;
+		current_language:
+			| "python"
+			| "javascript"
+			| "bash"
+			| "skill"
+			| "cli"
+			| "mcp";
+		api_description?: string | null;
+		analytics: Record<string, any>;
+		code_snippets: Record<string, string>;
+		last_api_call?: Payload | null;
+		cli_command?: string;
+	} = $props();
 
-	export let dependency: Dependency;
-	export let root: string;
-	export let api_prefix: string;
-	export let space_id: string | null;
-	export let endpoint_parameters: any;
-	export let username: string | null;
-	export let current_language: "python" | "javascript" | "bash" | "mcp";
-	export let api_description: string | null = null;
-	export let analytics: Record<string, any>;
-	export let markdown_code_snippets: Record<string, Record<string, string>>;
-	export let last_api_call: Payload | null = null;
-
-	let python_code: HTMLElement;
-	let js_code: HTMLElement;
-	let bash_post_code: HTMLElement;
-	let bash_get_code: HTMLElement;
-
-	let has_file_path = endpoint_parameters.some((param: EndpointParameter) =>
-		is_potentially_nested_file_data(param.example_input)
-	);
-	let blob_components = ["Audio", "File", "Image", "Video"];
-	let blob_examples: any[] = endpoint_parameters.filter(
-		(param: EndpointParameter) => blob_components.includes(param.component)
+	let cli_code = $derived(
+		(code_snippets.cli || "").replace("{command}", cli_command)
 	);
 
-	$: normalised_api_prefix = api_prefix ? api_prefix : "/";
-	$: normalised_root = root.replace(/\/$/, "");
-
-	$: is_most_recently_used = last_api_call?.fn_index === dependency.id;
-
-	$: actual_data =
-		is_most_recently_used && last_api_call?.data
-			? last_api_call.data.filter((d) => typeof d !== "undefined")
-			: null;
-
-	function getParameterValue(param: any, index: number): any {
-		if (
-			is_most_recently_used &&
-			actual_data &&
-			actual_data[index] !== undefined
-		) {
-			return actual_data[index];
-		}
-		return param.parameter_has_default !== undefined &&
-			param.parameter_has_default
-			? param.parameter_default
-			: param.example_input;
+	function escape_html(text: string): string {
+		return text
+			.replace(/&/g, "&amp;")
+			.replace(/</g, "&lt;")
+			.replace(/>/g, "&gt;");
 	}
 
-	$: markdown_code_snippets[
-		dependency.api_name as keyof typeof markdown_code_snippets
-	] = {
-		python: python_code?.innerText || "",
-		javascript: js_code?.innerText || "",
-		bash: bash_post_code?.innerText || ""
-	};
+	function highlight_python(code: string): string {
+		let html = escape_html(code);
+		html = html.replace(
+			/\b(from|import|print)\b/g,
+			'<span class="kw">$1</span>'
+		);
+		html = html.replace(
+			/(Client\()("[^"]*")/g,
+			'$1<span class="str">$2</span>'
+		);
+		html = html.replace(
+			/(api_name=|oauth_token=)("[^"]*")/g,
+			'$1<span class="api-name">$2</span>'
+		);
+		return html;
+	}
+
+	function highlight_javascript(code: string): string {
+		let html = escape_html(code);
+		html = html.replace(
+			/\b(import|from|const|await)\b/g,
+			'<span class="kw">$1</span>'
+		);
+		html = html.replace(
+			/(Client\.connect\()("[^"]*")/g,
+			'$1<span class="str">$2</span>'
+		);
+		html = html.replace(
+			/(\.predict\(|oauth_token: )("[^"]*")/g,
+			'$1<span class="api-name">$2</span>'
+		);
+		return html;
+	}
+
+	function highlight_bash(code: string): string {
+		return escape_html(code);
+	}
+
+	let python_html = $derived(highlight_python(code_snippets.python || ""));
+	let js_html = $derived(highlight_javascript(code_snippets.javascript || ""));
+	let bash_html = $derived(highlight_bash(code_snippets.bash || ""));
+	let cli_html = $derived(highlight_bash(cli_code));
 </script>
 
 <div class="container">
@@ -84,37 +95,9 @@
 		<Block>
 			<code>
 				<div class="copy">
-					<CopyButton code={python_code?.innerText} />
+					<CopyButton code={code_snippets.python || ""} />
 				</div>
-				<div bind:this={python_code}>
-					<pre><span class="highlight">from</span> gradio_client <span
-							class="highlight">import</span
-						> Client{#if has_file_path}, handle_file{/if}
-
-client = Client(<span class="token string">"{space_id || root}"</span
-						>{#if username !== null}, auth=("{username}", **password**){/if})
-result = client.<span class="highlight">predict</span
-						>(<!--
--->{#each endpoint_parameters as param, i}<!--
-		-->
-	{param.parameter_name
-								? param.parameter_name + "="
-								: ""}<span
-								class:recent-value={is_most_recently_used &&
-									actual_data?.[i] !== undefined}
-								>{represent_value(
-									getParameterValue(param, i),
-									param.python_type.type,
-									"py"
-								)}</span
-							>,{/each}<!--
-
-	-->
-	api_name=<span class="api-name">"/{dependency.api_name}"</span><!--
-	-->
-)
-<span class="highlight">print</span>(result)</pre>
-				</div>
+				<pre>{@html python_html}</pre>
 			</code>
 		</Block>
 	</div>
@@ -122,53 +105,9 @@ result = client.<span class="highlight">predict</span
 		<Block>
 			<code>
 				<div class="copy">
-					<CopyButton code={js_code?.innerText} />
+					<CopyButton code={code_snippets.javascript || ""} />
 				</div>
-				<div bind:this={js_code}>
-					<pre>import &lbrace; Client &rbrace; from "@gradio/client";
-	{#each blob_examples as { component, example_input }, i}<!--
-	-->
-	const response_{i} = await fetch("{example_input.url}");
-	const example{component} = await response_{i}.blob();
-						{/each}<!--
-	-->
-	const client = await Client.connect(<span class="token string"
-							>"{space_id || root}"</span
-						>{#if username !== null}, &lbrace;auth: ["{username}", **password**]&rbrace;{/if});
-	const result = await client.predict(<span class="api-name"
-							>"/{dependency.api_name}"</span
-						>, &lbrace; <!--
-	-->{#each endpoint_parameters as param, i}<!--
-			-->{#if blob_components.includes(param.component)}<!--
-		-->
-					<span
-									class="example-inputs"
-									>{param.parameter_name}: example{param.component}</span
-								>, <!--
-			--><span class="desc"><!--
-			--></span
-								><!--
-			-->{:else}<!--
-		-->		
-			<span
-									class="example-inputs {is_most_recently_used &&
-									actual_data?.[i] !== undefined
-										? 'recent-value'
-										: ''}"
-									>{param.parameter_name}: {represent_value(
-										getParameterValue(param, i),
-										param.python_type.type,
-										"js"
-									)}</span
-								>, <!--
-	--><!--
-	-->{/if}
-						{/each}
-	&rbrace;);
-
-	console.log(result.data);
-	</pre>
-				</div>
+				<pre>{@html js_html}</pre>
 			</code>
 		</Block>
 	</div>
@@ -176,29 +115,19 @@ result = client.<span class="highlight">predict</span
 		<Block>
 			<code>
 				<div class="copy">
-					<CopyButton code={bash_post_code?.innerText}></CopyButton>
+					<CopyButton code={code_snippets.bash || ""} />
 				</div>
-
-				<div bind:this={bash_post_code}>
-					<pre>curl -X POST {normalised_root}{normalised_api_prefix}/call/{dependency.api_name} -s -H "Content-Type: application/json" -d '{"{"}
-	"data": [{#each endpoint_parameters as param, i}
-							<!-- 
-	--><span
-								class={is_most_recently_used && actual_data?.[i] !== undefined
-									? "recent-value"
-									: ""}
-								>{represent_value(
-									getParameterValue(param, i),
-									param.python_type.type,
-									"bash"
-								)}</span
-							>{#if i < endpoint_parameters.length - 1},
-							{/if}
-						{/each}
-	]{"}"}' \
-	| awk -F'"' '{"{"} print $4{"}"}'  \
-	| read EVENT_ID; curl -N {normalised_root}{normalised_api_prefix}/call/{dependency.api_name}/$EVENT_ID</pre>
+				<pre>{@html bash_html}</pre>
+			</code>
+		</Block>
+	</div>
+	<div class:hidden={current_language !== "cli"}>
+		<Block>
+			<code>
+				<div class="copy">
+					<CopyButton code={cli_code} />
 				</div>
+				<pre>{@html cli_html}</pre>
 			</code>
 		</Block>
 	</div>
@@ -210,11 +139,6 @@ result = client.<span class="highlight">predict</span
 		color: var(--body-text-color);
 		font-family: var(--font-mono);
 		tab-size: 2;
-	}
-
-	.token.string {
-		display: contents;
-		color: var(--color-accent-base);
 	}
 
 	code {
@@ -238,21 +162,12 @@ result = client.<span class="highlight">predict</span
 		margin-bottom: var(--size-3);
 	}
 
-	.desc {
-		color: var(--body-text-color-subdued);
-	}
-
-	.api-name {
+	:global(.api-name) {
 		color: var(--color-accent);
 	}
 
-	.recent-value {
-		color: #fd7b00;
-		background: #fff4e6;
-		border: 1px solid #ffd9b3;
-		border-radius: var(--radius-sm);
-		padding: 1px 4px;
-		font-weight: var(--weight-medium);
+	:global(.str) {
+		color: var(--color-accent-base);
 	}
 
 	.hidden {

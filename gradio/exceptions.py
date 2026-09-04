@@ -54,6 +54,14 @@ class GradioVersionIncompatibleError(Exception):
     pass
 
 
+class ComponentProcessingError(ValueError):
+    """Raised when a component fails to pre/postprocess a value passed to or
+    returned from an event handler. Wraps the original exception with information
+    identifying which component/argument was at fault."""
+
+    pass
+
+
 InvalidApiName = InvalidApiNameError  # backwards compatibility
 
 
@@ -68,6 +76,7 @@ class Error(AppError):
                 raise gr.Error("Cannot divide by zero!")
         gr.Interface(divide, ["number", "number"], "number").launch()
     Demos: calculator, blocks_chained_events
+    Guides: alerts
     """
 
     def __init__(
@@ -107,6 +116,10 @@ class InvalidPathError(ValueError):
 
 
 class ChecksumMismatchError(Exception):
+    pass
+
+
+class ShareCertificateWriteError(RuntimeError):
     pass
 
 

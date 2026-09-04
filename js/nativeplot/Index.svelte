@@ -19,14 +19,22 @@
 
 	let props = $props();
 	const gradio = new Gradio<NativePlotEvents, NativePlotProps>(props);
+	gradio.watch_for_change();
 
-	let unique_colors = $derived(
-		gradio.props.color &&
-			gradio.props.value &&
-			gradio.props.value.datatypes[gradio.props.color] === "nominal"
-			? Array.from(new Set(_data.map((d) => d[gradio.props.color!])))
-			: []
-	);
+	let unique_colors = $derived.by(() => {
+		if (
+			!gradio.props.color ||
+			!gradio.props.value ||
+			gradio.props.value.datatypes[gradio.props.color] !== "nominal"
+		) {
+			return [];
+		}
+		const color_index = gradio.props.value.columns.indexOf(gradio.props.color);
+		if (color_index === -1) return [];
+		return Array.from(
+			new Set(gradio.props.value.data.map((row) => row[color_index]))
+		);
+	});
 
 	let x_lim = $derived(gradio.props.x_lim || null); // for some unknown reason, x_lim was getting set to undefined when used in re-render, so this line is needed
 	let y_lim = $derived(gradio.props.y_lim || null);
@@ -358,7 +366,7 @@
 					old_width = el[0].target.offsetWidth;
 					old_height = el[0].target.offsetHeight;
 					load_chart();
-				} else {
+				} else if (view) {
 					view.signal("width", el[0].target.offsetWidth).run();
 					if (fullscreen) {
 						view.signal("height", el[0].target.offsetHeight).run();
@@ -370,50 +378,53 @@
 		if (!vegaEmbed) {
 			vegaEmbed = (await import("vega-embed")).default;
 		}
-		vegaEmbed(chart_element, spec, { actions: false }).then(function (result) {
-			view = result.view;
-			resizeObserver!.observe(chart_element!);
-			var debounceTimeout: NodeJS.Timeout;
-			var lastSelectTime = 0;
-			view.addEventListener("dblclick", () => {
-				gradio.dispatch("double_click");
-			});
-			// prevent double-clicks from highlighting text
-			chart_element!.addEventListener(
-				"mousedown",
-				function (e) {
-					if (e.detail > 1) {
-						e.preventDefault();
-					}
-				},
-				false
-			);
-			if (gradio.props._selectable) {
-				view.addSignalListener("brush", function (_, value) {
-					if (Date.now() - lastSelectTime < 1000) return;
-					mouse_down_on_chart = true;
-					if (Object.keys(value).length === 0) return;
-					clearTimeout(debounceTimeout);
-					let range: [number, number] = value[Object.keys(value)[0]];
-					if (x_temporal) {
-						range = [range[0] / 1000, range[1] / 1000];
-					}
-					debounceTimeout = setTimeout(function () {
-						mouse_down_on_chart = false;
-						lastSelectTime = Date.now();
-						gradio.dispatch("select", {
-							value: range,
-							index: range,
-							selected: true
-						});
-						if (refresh_pending) {
-							refresh_pending = false;
-							load_chart();
-						}
-					}, 250);
+		if (!chart_element) return;
+		vegaEmbed(chart_element, spec, { actions: false, renderer: "svg" }).then(
+			function (result) {
+				view = result.view;
+				resizeObserver!.observe(chart_element!);
+				var debounceTimeout: NodeJS.Timeout;
+				var lastSelectTime = 0;
+				view.addEventListener("dblclick", () => {
+					gradio.dispatch("double_click");
 				});
+				// prevent double-clicks from highlighting text
+				chart_element!.addEventListener(
+					"mousedown",
+					function (e) {
+						if (e.detail > 1) {
+							e.preventDefault();
+						}
+					},
+					false
+				);
+				if (gradio.props._selectable) {
+					view.addSignalListener("brush", function (_, value) {
+						if (Date.now() - lastSelectTime < 1000) return;
+						mouse_down_on_chart = true;
+						if (Object.keys(value).length === 0) return;
+						clearTimeout(debounceTimeout);
+						let range: [number, number] = value[Object.keys(value)[0]];
+						if (x_temporal) {
+							range = [range[0] / 1000, range[1] / 1000];
+						}
+						debounceTimeout = setTimeout(function () {
+							mouse_down_on_chart = false;
+							lastSelectTime = Date.now();
+							gradio.dispatch("select", {
+								value: range,
+								index: range,
+								selected: true
+							});
+							if (refresh_pending) {
+								refresh_pending = false;
+								load_chart();
+							}
+						}, 250);
+					});
+				}
 			}
-		});
+		);
 	}
 
 	let refresh_pending = $state(false);
@@ -433,18 +444,19 @@
 
 	function export_chart(): void {
 		if (!view || !computed_style) return;
+		const current_view = view;
 
 		const block_background = computed_style.getPropertyValue(
 			"--block-background-fill"
 		);
 		const export_background = block_background || "white";
 
-		view.background(export_background).run();
+		current_view.background(export_background).run();
 
-		view
+		current_view
 			.toImageURL("png", 2)
 			.then(function (url) {
-				view.background("transparent").run();
+				current_view.background("transparent").run();
 
 				const link = document.createElement("a");
 				link.setAttribute("href", url);
@@ -456,7 +468,7 @@
 			})
 			.catch(function (err) {
 				console.error("Export failed:", err);
-				view.background("transparent").run();
+				current_view.background("transparent").run();
 			});
 	}
 
@@ -525,7 +537,6 @@
 			computed_style.getPropertyValue("--text-sm")
 		);
 
-		/* eslint-disable complexity */
 		return {
 			$schema: "https://vega.github.io/schema/vega-lite/v5.17.0.json",
 			background: "transparent",
@@ -545,7 +556,7 @@
 					labelFontWeight: "normal",
 					domain: false,
 					labelAngle: 0,
-					titleLimit: chart_element.offsetHeight * 0.8
+					titleLimit: (chart_element?.offsetHeight ?? 0) * 0.8
 				},
 				legend: {
 					labelColor: body_text_color,
@@ -610,7 +621,10 @@
 									labelAngle: gradio.props.x_label_angle
 								}),
 								labels: gradio.props.x_axis_labels_visible,
-								ticks: gradio.props.x_axis_labels_visible
+								ticks: gradio.props.x_axis_labels_visible,
+								...(gradio.props.x_axis_format !== null && {
+									format: gradio.props.x_axis_format
+								})
 							},
 							field: escape_field_name(gradio.props.x),
 							title: gradio.props.x_title || gradio.props.x,
@@ -624,9 +638,14 @@
 							sort: _sort
 						},
 						y: {
-							axis: gradio.props.y_label_angle
-								? { labelAngle: gradio.props.y_label_angle }
-								: {},
+							axis: {
+								...(gradio.props.y_label_angle && {
+									labelAngle: gradio.props.y_label_angle
+								}),
+								...(gradio.props.y_axis_format !== null && {
+									format: gradio.props.y_axis_format
+								})
+							},
 							field: escape_field_name(gradio.props.y),
 							title: gradio.props.y_title || gradio.props.y,
 							type: gradio.props.value!.datatypes[gradio.props.y],
@@ -640,13 +659,16 @@
 						color: gradio.props.color
 							? {
 									field: escape_field_name(gradio.props.color),
-									legend: {
-										orient: "bottom",
-										title: gradio.props.color_title,
-										values: gradio.props.colors_in_legend?.length
-											? [...gradio.props.colors_in_legend]
-											: undefined
-									},
+									legend:
+										gradio.props.colors_in_legend?.length === 0
+											? null
+											: {
+													orient: "bottom",
+													title: gradio.props.color_title,
+													values: gradio.props.colors_in_legend
+														? [...gradio.props.colors_in_legend]
+														: undefined
+												},
 									scale:
 										gradio.props.value!.datatypes[gradio.props.color] ===
 										"nominal"
@@ -698,7 +720,7 @@
 											: []),
 										...(gradio.props.tooltip === "axis"
 											? []
-											: gradio.props.value?.columns
+											: (gradio.props.value?.columns ?? [])
 													.filter(
 														(col) =>
 															col !== gradio.props.x &&
@@ -716,7 +738,7 @@
 					strokeDash: {},
 					mark: {
 						clip: true,
-						type: mode === "hover" ? "point" : gradio.props.value.mark
+						type: mode === "hover" ? "point" : gradio.props.value!.mark
 					},
 					name: mode
 				};
@@ -767,8 +789,6 @@
 			title: gradio.props.title || undefined
 		} as Spec;
 	}
-	/* eslint-enable complexity */
-	$inspect("visible", gradio.shared.visible);
 </script>
 
 <Block
@@ -799,15 +819,10 @@
 			}}
 		>
 			{#if gradio.props.buttons?.some((btn) => typeof btn === "string" && btn === "export")}
-				<IconButton Icon={Download} label="Export" on:click={export_chart} />
+				<IconButton Icon={Download} label="Export" onclick={export_chart} />
 			{/if}
 			{#if gradio.props.buttons?.some((btn) => typeof btn === "string" && btn === "fullscreen")}
-				<FullscreenButton
-					{fullscreen}
-					on:fullscreen={({ detail }) => {
-						fullscreen = detail;
-					}}
-				/>
+				<FullscreenButton {fullscreen} onclick={(fs) => (fullscreen = fs)} />
 			{/if}
 		</IconButtonWrapper>
 	{/if}

@@ -1,5 +1,170 @@
 # @gradio/audio
 
+## 0.24.2
+
+### Dependency updates
+
+- @gradio/client@2.5.1
+
+## 0.24.2
+
+### Dependency updates
+
+- @gradio/client@2.5.0
+
+## 0.24.2
+
+### Fixes
+
+- [#13626](https://github.com/gradio-app/gradio/pull/13626) [`7d71469`](https://github.com/gradio-app/gradio/commit/7d714699ae9c47daabbd48a55f61e990c5bba1d7) - Reset audio playback position when the file is cleared or a new one is uploaded.  Thanks @hysts!
+- [#13660](https://github.com/gradio-app/gradio/pull/13660) [`80d67ad`](https://github.com/gradio-app/gradio/commit/80d67add7597c7b112fd005616f9f0baa6b06d4e) - Upload recorded audio only once to fix intermittent Content-Length errors when loading recordings.  Thanks @hysts!
+
+### Dependency updates
+
+- @gradio/client@2.4.0
+- @gradio/utils@0.14.0
+- @gradio/atoms@0.26.1
+- @gradio/statustracker@0.15.2
+- @gradio/upload@0.18.2
+- @gradio/button@0.8.2
+
+## 0.24.1
+
+### Dependency updates
+
+- @gradio/statustracker@0.15.1
+- @gradio/button@0.8.1
+- @gradio/icons@0.16.0
+- @gradio/atoms@0.26.0
+- @gradio/client@2.3.1
+- @gradio/upload@0.18.1
+
+## 0.24.0
+
+### Features
+
+- [#13526](https://github.com/gradio-app/gradio/pull/13526) [`53cb4ca`](https://github.com/gradio-app/gradio/commit/53cb4cae1ec3521e9170d12867253516413ba37a) - Run `pnpm lint` and `pnpm ts:check` on CI.  Thanks @abidlabs!
+
+### Dependency updates
+
+- @gradio/atoms@0.25.0
+- @gradio/statustracker@0.15.0
+- @gradio/utils@0.13.0
+- @gradio/client@2.3.0
+- @gradio/upload@0.18.0
+- @gradio/button@0.8.0
+
+## 0.23.4
+
+### Dependency updates
+
+- @gradio/client@2.2.2
+- @gradio/button@0.7.0
+
+## 0.23.3
+
+### Dependency updates
+
+- @gradio/client@2.2.1
+- @gradio/upload@0.17.10
+
+## 0.23.3
+
+### Dependency updates
+
+- @gradio/atoms@0.24.0
+- @gradio/statustracker@0.14.1
+- @gradio/upload@0.17.9
+
+## 0.23.2
+
+### Dependency updates
+
+- @gradio/atoms@0.23.1
+- @gradio/statustracker@0.14.0
+- @gradio/client@2.2.0
+
+## 0.23.1
+
+### Features
+
+- [#13167](https://github.com/gradio-app/gradio/pull/13167) [`a4e1c92`](https://github.com/gradio-app/gradio/commit/a4e1c92c11e05bee332ff69e19b533fbd9abc840) - Audio and Video unit tests.  Thanks @freddyaboulton!
+
+### Dependency updates
+
+- @gradio/utils@0.12.2
+- @gradio/atoms@0.23.0
+- @gradio/statustracker@0.13.1
+- @gradio/upload@0.17.8
+
+## 0.23.0
+
+### Features
+
+- [#13021](https://github.com/gradio-app/gradio/pull/13021) [`5c4dc6a`](https://github.com/gradio-app/gradio/commit/5c4dc6aca11575cf4fec6704afd48a54664f983f) - add core themes.  Thanks @hannahblair!
+
+### Dependency updates
+
+- @gradio/utils@0.12.1
+- @gradio/statustracker@0.13.0
+- @gradio/button@0.6.6
+
+## 0.22.4
+
+### Dependency updates
+
+- @gradio/button@0.6.5
+- @gradio/statustracker@0.12.5
+- @gradio/utils@0.12.0
+- @gradio/atoms@0.22.2
+- @gradio/upload@0.17.7
+
+## 0.22.3
+
+### Dependency updates
+
+- @gradio/client@2.1.0
+- @gradio/button@0.6.4
+
+## 0.22.3
+
+### Fixes
+
+- [#12873](https://github.com/gradio-app/gradio/pull/12873) [`6533d38`](https://github.com/gradio-app/gradio/commit/6533d38c29ee86823e58d94a8afedd219bcc9011) - Fix stop button not working in Audio streaming.  Thanks @hysts!
+
+### Dependency updates
+
+- @gradio/utils@0.11.3
+- @gradio/atoms@0.22.0
+- @gradio/statustracker@0.12.4
+- @gradio/upload@0.17.6
+
+## 0.22.2
+
+### Dependency updates
+
+- @gradio/atoms@0.21.0
+- @gradio/client@2.0.4
+- @gradio/statustracker@0.12.3
+- @gradio/upload@0.17.5
+
+## 0.22.1
+
+### Fixes
+
+- [#12800](https://github.com/gradio-app/gradio/pull/12800) [`7a1c321`](https://github.com/gradio-app/gradio/commit/7a1c321b6546ba05a353488f5133e8262c4a8a39) - Bump svelte/kit for security reasons.  Thanks @freddyaboulton!
+- [#12779](https://github.com/gradio-app/gradio/pull/12779) [`ea2d3e9`](https://github.com/gradio-app/gradio/commit/ea2d3e985a8b42d188e551f517c5825c00790628) - Migrate Audio + Upload + Atoms to Svelte 5.  Thanks @dawoodkhan82!
+
+### Dependency updates
+
+- @gradio/button@0.6.3
+- @gradio/statustracker@0.12.2
+- @gradio/atoms@0.20.1
+- @gradio/utils@0.11.2
+- @gradio/icons@0.15.1
+- @gradio/upload@0.17.4
+- @gradio/client@2.0.3
+
 ## 0.22.0
 
 ### Dependency updates

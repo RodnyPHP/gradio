@@ -1,21 +1,16 @@
-<script context="module">
-	import { Meta, Template, Story } from "@storybook/addon-svelte-csf";
+<script module>
+	import { defineMeta } from "@storybook/addon-svelte-csf";
 	import NativePlot from "./Index.svelte";
+	import { wrapProps } from "../storybook/wrapProps";
 
-	export const meta = {
+	const { Story } = defineMeta({
 		title: "Components/NativePlot",
 		component: NativePlot,
 		parameters: {
 			chromatic: { delay: 500 }
 		}
-	};
+	});
 </script>
-
-<Template let:args>
-	<div style="width: 600px; height: 400px;">
-		<NativePlot {...args} />
-	</div>
-</Template>
 
 <Story
 	name="Scatter Plot"
@@ -48,7 +43,13 @@
 		show_label: true,
 		tooltip: "all"
 	}}
-/>
+>
+	{#snippet template(args)}
+		<div style="width: 600px; height: 400px;">
+			<NativePlot {...wrapProps(args)} />
+		</div>
+	{/snippet}
+</Story>
 
 <Story
 	name="Line Plot"
@@ -77,37 +78,13 @@
 		label: "Line Plot",
 		show_label: true
 	}}
-/>
-
-<Story
-	name="Line Plot with height"
-	args={{
-		value: {
-			columns: ["time", "value"],
-			data: [
-				[1, 10],
-				[2, 15],
-				[3, 13],
-				[4, 17],
-				[5, 14],
-				[6, 20]
-			],
-			datatypes: {
-				time: "quantitative",
-				value: "quantitative"
-			},
-			mark: "line"
-		},
-		x: "time",
-		y: "value",
-		title: "Sample Line Plot",
-		x_title: "Time",
-		y_title: "Value",
-		height: 250,
-		label: "Line Plot",
-		show_label: true
-	}}
-/>
+>
+	{#snippet template(args)}
+		<div style="width: 600px; height: 400px;">
+			<NativePlot {...wrapProps(args)} />
+		</div>
+	{/snippet}
+</Story>
 
 <Story
 	name="Colors In Legend Test"
@@ -143,7 +120,13 @@
 		show_label: true,
 		tooltip: "all"
 	}}
-/>
+>
+	{#snippet template(args)}
+		<div style="width: 600px; height: 400px;">
+			<NativePlot {...wrapProps(args)} />
+		</div>
+	{/snippet}
+</Story>
 
 <Story
 	name="Empty Plot"
@@ -152,4 +135,10 @@
 		label: "Empty Plot",
 		show_label: true
 	}}
-/>
+>
+	{#snippet template(args)}
+		<div style="width: 600px; height: 400px;">
+			<NativePlot {...wrapProps(args)} />
+		</div>
+	{/snippet}
+</Story>

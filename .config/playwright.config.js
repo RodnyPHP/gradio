@@ -18,16 +18,25 @@ const base = defineConfig({
 	timeout: 30_000,
 	testMatch: /.*\.spec\.ts/,
 	testDir: "..",
-	workers: process.env.CUSTOM_TEST ? 1 : process.env.CI ? 4 : undefined,
+	// Reload tests must stay serial (CUSTOM_TEST=1) — several rewrite a shared
+	// `run.py` in the same cwd, so parallel workers would clobber each other.
+	// For the regular browser suite on CI, allow PW_BROWSER_WORKERS to raise the
+	// count above the historical default of 4 (the runner has 16 cores and the
+	// tests are largely wait-bound, so they parallelize well).
+	workers: process.env.CUSTOM_TEST
+		? 1
+		: process.env.CI
+			? Number(process.env.PW_BROWSER_WORKERS) || 4
+			: undefined,
 	retries: 3,
-	fullyParallel: true
+	fullyParallel: false
 });
 
 // There are Firefox-specific issues such as https://github.com/gradio-app/gradio/pull/9528 so we want to run the tests on Firefox, but Firefox sometimes fails to start in the GitHub Actions environment so we disable it on CI.
 const localOnly = (project) => (process.env.CI ? undefined : project);
 
 const normal = defineConfig(base, {
-	globalSetup: process.env.CUSTOM_TEST ? undefined : "./playwright-setup.js",
+	// globalSetup removed - each test file now launches its own Gradio app via fixture
 	projects: [
 		localOnly({
 			name: "firefox",

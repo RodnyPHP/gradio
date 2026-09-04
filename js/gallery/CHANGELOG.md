@@ -1,5 +1,215 @@
 # @gradio/gallery
 
+## 0.19.1
+
+### Dependency updates
+
+- @gradio/client@2.5.1
+
+## 0.19.1
+
+### Dependency updates
+
+- @gradio/client@2.5.0
+
+## 0.19.1
+
+### Dependency updates
+
+- @gradio/client@2.4.0
+- @gradio/utils@0.14.0
+- @gradio/atoms@0.26.1
+- @gradio/statustracker@0.15.2
+- @gradio/upload@0.18.2
+- @gradio/file@0.16.0
+- @gradio/image@0.28.1
+- @gradio/video@0.23.0
+
+## 0.19.0
+
+### Features
+
+- [#13566](https://github.com/gradio-app/gradio/pull/13566) [`79b9171`](https://github.com/gradio-app/gradio/commit/79b91718b5c972c174ed042d8b04443bc2274076) - Gallery Download All.  Thanks @dawoodkhan82!
+- [#13543](https://github.com/gradio-app/gradio/pull/13543) [`0533483`](https://github.com/gradio-app/gradio/commit/0533483bccdee38f334a598f18297e8c02966343) - Migrate Image components to Svelte 5.  Thanks @dawoodkhan82!
+
+### Dependency updates
+
+- @gradio/statustracker@0.15.1
+- @gradio/icons@0.16.0
+- @gradio/atoms@0.26.0
+- @gradio/image@0.28.0
+- @gradio/video@0.22.0
+- @gradio/client@2.3.1
+- @gradio/upload@0.18.1
+- @gradio/file@0.15.1
+
+## 0.18.0
+
+### Features
+
+- [#13526](https://github.com/gradio-app/gradio/pull/13526) [`53cb4ca`](https://github.com/gradio-app/gradio/commit/53cb4cae1ec3521e9170d12867253516413ba37a) - Run `pnpm lint` and `pnpm ts:check` on CI.  Thanks @abidlabs!
+
+### Dependency updates
+
+- @gradio/atoms@0.25.0
+- @gradio/statustracker@0.15.0
+- @gradio/utils@0.13.0
+- @gradio/client@2.3.0
+- @gradio/upload@0.18.0
+- @gradio/image@0.27.0
+- @gradio/file@0.15.0
+- @gradio/video@0.21.0
+
+## 0.17.8
+
+### Dependency updates
+
+- @gradio/client@2.2.2
+
+## 0.17.8
+
+### Dependency updates
+
+- @gradio/client@2.2.1
+- @gradio/upload@0.17.10
+
+## 0.17.8
+
+### Fixes
+
+- [#13335](https://github.com/gradio-app/gradio/pull/13335) [`953efe0`](https://github.com/gradio-app/gradio/commit/953efe06fa6d0742a9dd899b846d45fbc6ea3ccf) - Prevent Gallery Select Event From Triggering When Value Updated Programmatically.  Thanks @freddyaboulton!
+
+## 0.17.7
+
+### Dependency updates
+
+- @gradio/atoms@0.24.0
+- @gradio/statustracker@0.14.1
+- @gradio/upload@0.17.9
+- @gradio/file@0.14.8
+- @gradio/image@0.26.3
+- @gradio/video@0.20.8
+
+## 0.17.6
+
+### Features
+
+- [#13213](https://github.com/gradio-app/gradio/pull/13213) [`457f130`](https://github.com/gradio-app/gradio/commit/457f130b310ac087fdc6ba7dbbc7fa78e0bcccf8) - Gallery Unit Tests.  Thanks @freddyaboulton!
+
+### Dependency updates
+
+- @gradio/atoms@0.23.1
+- @gradio/statustracker@0.14.0
+- @gradio/client@2.2.0
+- @gradio/image@0.26.2
+- @gradio/file@0.14.7
+- @gradio/video@0.20.7
+
+## 0.17.5
+
+### Fixes
+
+- [#13178](https://github.com/gradio-app/gradio/pull/13178) [`d815881`](https://github.com/gradio-app/gradio/commit/d815881739689f45f5387ea52cc92e2cddf8adcf) - fix(gallery): prevent incorrect selected_index clamping on image append.  Thanks @Gopesh111!
+
+### Dependency updates
+
+- @gradio/utils@0.12.2
+- @gradio/atoms@0.23.0
+- @gradio/statustracker@0.13.1
+- @gradio/upload@0.17.8
+- @gradio/image@0.26.1
+- @gradio/video@0.20.6
+- @gradio/file@0.14.6
+
+## 0.17.4
+
+### Dependency updates
+
+- @gradio/utils@0.12.1
+- @gradio/statustracker@0.13.0
+- @gradio/image@0.26.0
+- @gradio/video@0.20.5
+- @gradio/file@0.14.5
+
+## 0.17.3
+
+### Dependency updates
+
+- @gradio/statustracker@0.12.5
+- @gradio/utils@0.12.0
+- @gradio/atoms@0.22.2
+- @gradio/upload@0.17.7
+- @gradio/image@0.25.4
+- @gradio/file@0.14.4
+- @gradio/video@0.20.4
+
+## 0.17.2
+
+### Fixes
+
+- [#12927](https://github.com/gradio-app/gradio/pull/12927) [`ca84f3e`](https://github.com/gradio-app/gradio/commit/ca84f3e36c6a3f3c3f0b57084b6f514d6cded1d4) - Fix Gallery CSS Issue.  Thanks @freddyaboulton!
+
+## 0.17.1
+
+### Dependency updates
+
+- @gradio/client@2.1.0
+
+## 0.17.1
+
+### Fixes
+
+- [#12865](https://github.com/gradio-app/gradio/pull/12865) [`db7ab39`](https://github.com/gradio-app/gradio/commit/db7ab39c7e6ea3d1a2f0ce1991b5dbc0483b1e27) - Fix Gallery fullscreen button not working in preview mode.  Thanks @veeceey!
+- [#12866](https://github.com/gradio-app/gradio/pull/12866) [`9810396`](https://github.com/gradio-app/gradio/commit/981039647a4212c649a33dc4b56a4714980519eb) - Fix Gallery preview=True parameter not working on initial load.  Thanks @veeceey!
+
+### Dependency updates
+
+- @gradio/utils@0.11.3
+- @gradio/atoms@0.22.0
+- @gradio/statustracker@0.12.4
+- @gradio/upload@0.17.6
+- @gradio/video@0.20.3
+- @gradio/file@0.14.3
+- @gradio/image@0.25.3
+
+## 0.17.0
+
+### Features
+
+- [#12804](https://github.com/gradio-app/gradio/pull/12804) [`fc366b4`](https://github.com/gradio-app/gradio/commit/fc366b485325c900b0c2b85ba05b7d23a81a0dee) - Allow webcam uploads and clipboard paste for gallery.  Thanks @freddyaboulton!
+
+### Dependency updates
+
+- @gradio/atoms@0.21.0
+- @gradio/client@2.0.4
+- @gradio/statustracker@0.12.3
+- @gradio/file@0.14.2
+- @gradio/image@0.25.2
+- @gradio/upload@0.17.5
+- @gradio/video@0.20.2
+
+## 0.16.2
+
+### Fixes
+
+- [#12800](https://github.com/gradio-app/gradio/pull/12800) [`7a1c321`](https://github.com/gradio-app/gradio/commit/7a1c321b6546ba05a353488f5133e8262c4a8a39) - Bump svelte/kit for security reasons.  Thanks @freddyaboulton!
+- [#12698](https://github.com/gradio-app/gradio/pull/12698) [`db86165`](https://github.com/gradio-app/gradio/commit/db86165535386991701ea89b2083ef5e60cd23e8) - Migrates gr.File.  Thanks @aliabid94!
+- [#12806](https://github.com/gradio-app/gradio/pull/12806) [`3b3b035`](https://github.com/gradio-app/gradio/commit/3b3b0350e90756e937fc0908446f66ae1412c89f) - Fix Gallery upload after it has been populated.  Thanks @freddyaboulton!
+- [#12779](https://github.com/gradio-app/gradio/pull/12779) [`ea2d3e9`](https://github.com/gradio-app/gradio/commit/ea2d3e985a8b42d188e551f517c5825c00790628) - Migrate Audio + Upload + Atoms to Svelte 5.  Thanks @dawoodkhan82!
+- [#12684](https://github.com/gradio-app/gradio/pull/12684) [`1373713`](https://github.com/gradio-app/gradio/commit/1373713646e34078188265eb07c4bff5a048e9a2) - Migrate Gallery to Svelte 5.  Thanks @freddyaboulton!
+
+### Dependency updates
+
+- @gradio/statustracker@0.12.2
+- @gradio/atoms@0.20.1
+- @gradio/utils@0.11.2
+- @gradio/icons@0.15.1
+- @gradio/upload@0.17.4
+- @gradio/client@2.0.3
+- @gradio/image@0.25.1
+- @gradio/file@0.14.1
+- @gradio/video@0.20.1
+
 ## 0.16.1
 
 ### Dependency updates

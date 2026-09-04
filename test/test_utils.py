@@ -12,14 +12,16 @@ from unittest.mock import patch
 import numpy as np
 import pytest
 from gradio_client.exceptions import AppError
-from hypothesis import given, settings
-from hypothesis import strategies as st
+from hypothesis import given, settings  # ty: ignore[unresolved-import]
+from hypothesis import strategies as st  # ty: ignore[unresolved-import]
 
+import gradio as gr
 from gradio import EventData, Request
 from gradio.exceptions import Error
 from gradio.external_utils import format_ner_list
 from gradio.utils import (
     FileSize,
+    SyncToAsyncIterator,
     UnhashableKeyDict,
     _parse_file_size,
     abspath,
@@ -34,6 +36,7 @@ from gradio.utils import (
     get_extension_from_file_path_or_url,
     get_function_description,
     get_function_params,
+    get_heartbeat_rate,
     get_icon_path,
     get_type_hints,
     ipython_check,
@@ -41,6 +44,8 @@ from gradio.utils import (
     is_hosted_notebook,
     is_in_or_equal,
     is_special_typed_parameter,
+    parse_escaped_json,
+    safe_aclose_iterator,
     safe_deepcopy,
     sanitize_list_for_csv,
     sanitize_value_for_csv,
@@ -91,8 +96,9 @@ class TestUtils:
         out_article = download_if_url(in_article)
         assert out_article == in_article
 
+    @pytest.mark.flaky
     def test_download_if_url_correct_parse(self):
-        in_article = "https://github.com/gradio-app/gradio/blob/master/README.md"
+        in_article = "https://huggingface.co/datasets/gradio/custom-html-gallery/blob/main/manifest.json"
         out_article = download_if_url(in_article)
         assert out_article != in_article
 
@@ -119,6 +125,38 @@ def test_assert_configs_are_equivalent():
     assert assert_configs_are_equivalent_besides_ids(xray_config, xray_config_diff_ids)
     with pytest.raises(ValueError):
         assert_configs_are_equivalent_besides_ids(xray_config, xray_config_wrong)
+
+
+def test_get_heartbeat_rate(monkeypatch):
+    # Defaults to 15 seconds when nothing is configured.
+    monkeypatch.delenv("GRADIO_HEARTBEAT_INTERVAL", raising=False)
+    monkeypatch.delenv("GRADIO_IS_E2E_TEST", raising=False)
+    assert get_heartbeat_rate() == 15
+
+    # GRADIO_HEARTBEAT_INTERVAL overrides the default with a float value.
+    monkeypatch.setenv("GRADIO_HEARTBEAT_INTERVAL", "1.5")
+    assert get_heartbeat_rate() == 1.5
+
+    # It takes precedence over the GRADIO_IS_E2E_TEST fallback.
+    monkeypatch.setenv("GRADIO_IS_E2E_TEST", "1")
+    assert get_heartbeat_rate() == 1.5
+
+    # Falls back to the E2E rate when only GRADIO_IS_E2E_TEST is set.
+    monkeypatch.delenv("GRADIO_HEARTBEAT_INTERVAL", raising=False)
+    assert get_heartbeat_rate() == 0.25
+
+    # An invalid value warns and falls back to the default.
+    monkeypatch.delenv("GRADIO_IS_E2E_TEST", raising=False)
+    monkeypatch.setenv("GRADIO_HEARTBEAT_INTERVAL", "not-a-number")
+    with pytest.warns(UserWarning):
+        assert get_heartbeat_rate() == 15
+
+    # A zero or negative value would busy-loop asyncio.sleep(), so it warns
+    # and falls back to the default.
+    for bad_value in ("0", "-5"):
+        monkeypatch.setenv("GRADIO_HEARTBEAT_INTERVAL", bad_value)
+        with pytest.warns(UserWarning):
+            assert get_heartbeat_rate() == 15
 
 
 class TestFormatNERList:
@@ -190,6 +228,13 @@ class TestSanitizeForCSV:
             [["=abc", "def", "gh,+ij"], ["abc", "=def", "+ghij"]]
         ) == [["'=abc", "def", "'gh,+ij"], ["abc", "'=def", "'+ghij"]]
         assert sanitize_list_for_csv([1, ["ab", "=de"]]) == [1, ["ab", "'=de"]]
+
+    def test_parse_escaped_json(self):
+        assert parse_escaped_json("-0.5678") == -0.5678
+        # Negative numbers get CSV-escaped with a leading "'" on write (#13591)
+        assert parse_escaped_json("'-0.5678") == -0.5678
+        with pytest.raises(json.JSONDecodeError):
+            parse_escaped_json("'not json")
 
 
 class TestValidateURL:
@@ -279,6 +324,15 @@ class TestGetTypeHints:
             assert hints["s"] is str
 
         assert len(get_type_hints(GenericObject())) == 0
+
+    def test_get_type_hints_with_unresolvable_forward_ref(self):
+        """get_type_hints should return {} when annotations can't be resolved at runtime."""
+
+        def func(x: str) -> "NonExistentType":  # noqa: F821, UP037  # ty: ignore[unresolved-reference]
+            return x
+
+        hints = get_type_hints(func)
+        assert hints == {}
 
     def test_is_special_typed_parameter(self):
         def func(a: list[str], b: Literal["a", "b"], c, d: Request, e: Request | None):
@@ -938,3 +992,163 @@ class TestGetFunctionDescription:
         assert parameters == {}
         assert returns == []
         assert description == "This is the docstring from the parent class."
+
+
+class TestConnectHeartbeat:
+    def test_unload_registered_last(self):
+        with gr.Blocks() as demo:
+            msg = gr.Markdown("# Test")
+            gr.Button("Click").click(lambda: "# TADA!", outputs=[msg])
+            demo.unload(lambda: None)
+
+        config = demo.get_config_file()
+        assert config["connect_heartbeat"] is True
+
+    def test_unload_registered_first(self):
+        with gr.Blocks() as demo:
+            demo.unload(lambda: None)
+            msg = gr.Markdown("# Test")
+            gr.Button("Click").click(lambda: "# TADA!", outputs=[msg])
+
+        config = demo.get_config_file()
+        assert config["connect_heartbeat"] is True
+
+    def test_unload_registered_in_middle(self):
+        with gr.Blocks() as demo:
+            msg = gr.Markdown("# Test")
+            gr.Button("Click1").click(lambda: "# 1", outputs=[msg])
+            demo.unload(lambda: None)
+            gr.Button("Click2").click(lambda: "# 2", outputs=[msg])
+
+        config = demo.get_config_file()
+        assert config["connect_heartbeat"] is True
+
+    def test_no_unload_no_heartbeat(self):
+        with gr.Blocks() as demo:
+            msg = gr.Markdown("# Test")
+            gr.Button("Click").click(lambda: "# TADA!", outputs=[msg])
+
+        config = demo.get_config_file()
+        assert config["connect_heartbeat"] is False
+
+    def test_per_session_manual_cache_connects_heartbeat(self):
+        def predict(value, cache=gr.Cache(per_session=True)):
+            hit = cache.get(value)
+            if hit is not None:
+                return hit["value"]
+            cache.set(value, value=value)
+            return value
+
+        with gr.Blocks() as demo:
+            text = gr.Textbox()
+            output = gr.Textbox()
+            gr.Button("Click").click(predict, [text], [output])
+
+        config = demo.get_config_file()
+        assert config["connect_heartbeat"] is True
+
+    def test_per_session_decorator_cache_connects_heartbeat(self):
+        @gr.cache(per_session=True)
+        def predict(value):
+            return value
+
+        with gr.Blocks() as demo:
+            text = gr.Textbox()
+            output = gr.Textbox()
+            gr.Button("Click").click(predict, [text], [output])
+
+        config = demo.get_config_file()
+        assert config["connect_heartbeat"] is True
+
+
+class _FakeIterator:
+    """A fake iterator with a controllable close() for testing."""
+
+    def __init__(self, fail_count=0):
+        self.close_call_count = 0
+        self._fail_count = fail_count
+        self._closed = False
+
+    def close(self):
+        self.close_call_count += 1
+        if self.close_call_count <= self._fail_count:
+            raise ValueError("generator already executing")
+        self._closed = True
+
+    def __next__(self):
+        raise StopIteration
+
+    def __iter__(self):
+        return self
+
+
+class TestSyncToAsyncIteratorAclose:
+    @pytest.mark.asyncio
+    async def test_aclose_closes_iterator(self):
+        """aclose() should call close() on the underlying sync iterator."""
+
+        def gen():
+            yield 1
+            yield 2
+
+        iterator = SyncToAsyncIterator(gen(), limiter=None)
+        await iterator.aclose()
+        assert list(iterator.iterator) == []
+
+    @pytest.mark.asyncio
+    async def test_aclose_retries_on_already_executing(self):
+        """aclose() should retry when ValueError('generator already executing') is raised."""
+        fake = _FakeIterator(fail_count=2)
+        iterator = SyncToAsyncIterator(fake, limiter=None)
+        await iterator.aclose(retry_interval=0.01)
+
+        assert fake.close_call_count == 3
+        assert fake._closed is True
+
+    @pytest.mark.asyncio
+    async def test_aclose_timeout_raises(self):
+        """aclose() should raise ValueError after timeout is exceeded."""
+        fake = _FakeIterator(fail_count=999)
+        iterator = SyncToAsyncIterator(fake, limiter=None)
+
+        with pytest.raises(ValueError, match="already executing"):
+            await iterator.aclose(timeout=0.1, retry_interval=0.02)
+
+    @pytest.mark.asyncio
+    async def test_aclose_raises_other_value_error(self):
+        """aclose() should not retry on ValueError without 'already executing'."""
+
+        class _BadIterator:
+            def close(self):
+                raise ValueError("some other error")
+
+        iterator = SyncToAsyncIterator(_BadIterator(), limiter=None)
+        with pytest.raises(ValueError, match="some other error"):
+            await iterator.aclose()
+
+
+class TestSafeAcloseIterator:
+    @pytest.mark.asyncio
+    async def test_delegates_to_aclose(self):
+        """safe_aclose_iterator() should call aclose() on the iterator."""
+
+        def gen():
+            yield 1
+
+        iterator = SyncToAsyncIterator(gen(), limiter=None)
+        await safe_aclose_iterator(iterator)
+        assert list(iterator.iterator) == []
+
+    @pytest.mark.asyncio
+    async def test_works_with_async_generator(self):
+        """safe_aclose_iterator() should work with native async generators."""
+
+        async def gen():
+            yield 1
+            yield 2
+
+        ag = gen()
+        await safe_aclose_iterator(ag)
+        # After aclose, async generator should raise StopAsyncIteration
+        with pytest.raises(StopAsyncIteration):
+            await ag.__anext__()

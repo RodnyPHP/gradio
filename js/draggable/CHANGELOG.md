@@ -1,5 +1,86 @@
 # @gradio/draggable
 
+## 0.4.0
+
+### Dependency updates
+
+- @gradio/utils@0.14.0
+- @gradio/statustracker@0.15.2
+
+## 0.4.0
+
+### Dependency updates
+
+- @gradio/statustracker@0.15.1
+
+## 0.4.0
+
+### Features
+
+- [#13526](https://github.com/gradio-app/gradio/pull/13526) [`53cb4ca`](https://github.com/gradio-app/gradio/commit/53cb4cae1ec3521e9170d12867253516413ba37a) - Run `pnpm lint` and `pnpm ts:check` on CI.  Thanks @abidlabs!
+
+### Dependency updates
+
+- @gradio/statustracker@0.15.0
+- @gradio/utils@0.13.0
+
+## 0.3.1
+
+### Dependency updates
+
+- @gradio/statustracker@0.14.1
+
+## 0.3.1
+
+### Dependency updates
+
+- @gradio/statustracker@0.14.0
+
+## 0.3.1
+
+### Dependency updates
+
+- @gradio/utils@0.12.2
+- @gradio/statustracker@0.13.1
+
+## 0.3.1
+
+### Dependency updates
+
+- @gradio/utils@0.12.1
+- @gradio/statustracker@0.13.0
+
+## 0.3.1
+
+### Dependency updates
+
+- @gradio/statustracker@0.12.5
+- @gradio/utils@0.12.0
+
+## 0.3.1
+
+### Dependency updates
+
+- @gradio/utils@0.11.3
+- @gradio/statustracker@0.12.4
+
+## 0.3.1
+
+### Dependency updates
+
+- @gradio/statustracker@0.12.3
+
+## 0.3.1
+
+### Fixes
+
+- [#12800](https://github.com/gradio-app/gradio/pull/12800) [`7a1c321`](https://github.com/gradio-app/gradio/commit/7a1c321b6546ba05a353488f5133e8262c4a8a39) - Bump svelte/kit for security reasons.  Thanks @freddyaboulton!
+
+### Dependency updates
+
+- @gradio/statustracker@0.12.2
+- @gradio/utils@0.11.2
+
 ## 0.3.0
 
 ### Dependency updates

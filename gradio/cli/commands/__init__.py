@@ -1,10 +1,13 @@
+from hf_gradio.cli import info, predict
+
 from .cli_env_info import print_environment_info
 from .components import app as custom_component
 from .deploy_space import deploy
 from .hf_login import hf_login
 from .load import load_app
-from .reload import main as reload
+from .reload import run as reload
 from .sketch import launch as sketch
+from .skills import skills_app
 from .upload_mcp import main as upload_mcp
 
 __all__ = [
@@ -16,4 +19,7 @@ __all__ = [
     "upload_mcp",
     "hf_login",
     "load_app",
+    "skills_app",
+    "info",
+    "predict",
 ]

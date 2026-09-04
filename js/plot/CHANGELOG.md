@@ -1,5 +1,122 @@
 # @gradio/plot
 
+## 0.12.2
+
+### Fixes
+
+- [#13644](https://github.com/gradio-app/gradio/pull/13644) [`f0abb1e`](https://github.com/gradio-app/gradio/commit/f0abb1ea8e61f4b886296365639b9fe0492012a9) - restore shared props lost during frontend prop partitioning.  Thanks @dawoodkhan82!
+- [#13678](https://github.com/gradio-app/gradio/pull/13678) [`46e511b`](https://github.com/gradio-app/gradio/commit/46e511bd27669c22479e4323406d5288a241e68d) - Only remount a plot when its payload changes.  Thanks @hysts!
+
+### Dependency updates
+
+- @gradio/utils@0.14.0
+- @gradio/atoms@0.26.1
+- @gradio/theme@0.7.0
+- @gradio/statustracker@0.15.2
+
+## 0.12.1
+
+### Fixes
+
+- [#13540](https://github.com/gradio-app/gradio/pull/13540) [`98de45e`](https://github.com/gradio-app/gradio/commit/98de45e708305563f79614221aede2bf5d863922) - Fix gr.Plot collapsing to zero height for autosize Plotly figures.  Thanks @hysts!
+
+### Dependency updates
+
+- @gradio/statustracker@0.15.1
+- @gradio/icons@0.16.0
+- @gradio/atoms@0.26.0
+
+## 0.12.0
+
+### Features
+
+- [#13526](https://github.com/gradio-app/gradio/pull/13526) [`53cb4ca`](https://github.com/gradio-app/gradio/commit/53cb4cae1ec3521e9170d12867253516413ba37a) - Run `pnpm lint` and `pnpm ts:check` on CI.  Thanks @abidlabs!
+
+### Dependency updates
+
+- @gradio/atoms@0.25.0
+- @gradio/statustracker@0.15.0
+- @gradio/utils@0.13.0
+- @gradio/theme@0.6.2
+
+## 0.11.0
+
+### Features
+
+- [#13510](https://github.com/gradio-app/gradio/pull/13510) [`75c684e`](https://github.com/gradio-app/gradio/commit/75c684efb87624bee2fb63b08122564e6538509e) - Migrate Plot to Svelte 5.  Thanks @dawoodkhan82!
+
+## 0.10.10
+
+### Fixes
+
+- [#13463](https://github.com/gradio-app/gradio/pull/13463) [`58088ad`](https://github.com/gradio-app/gradio/commit/58088ad1d75eee0f93ba1c02f427ee04f60847b4) - Self-host frontend assets so that Gradio works offline!.  Thanks @abidlabs!
+
+## 0.10.9
+
+### Dependency updates
+
+- @gradio/atoms@0.24.0
+- @gradio/statustracker@0.14.1
+
+## 0.10.8
+
+### Dependency updates
+
+- @gradio/atoms@0.23.1
+- @gradio/statustracker@0.14.0
+
+## 0.10.7
+
+### Dependency updates
+
+- @gradio/utils@0.12.2
+- @gradio/atoms@0.23.0
+- @gradio/statustracker@0.13.1
+
+## 0.10.6
+
+### Dependency updates
+
+- @gradio/utils@0.12.1
+- @gradio/statustracker@0.13.0
+
+## 0.10.5
+
+### Dependency updates
+
+- @gradio/statustracker@0.12.5
+- @gradio/utils@0.12.0
+- @gradio/atoms@0.22.2
+
+## 0.10.4
+
+### Dependency updates
+
+- @gradio/utils@0.11.3
+- @gradio/atoms@0.22.0
+- @gradio/statustracker@0.12.4
+
+## 0.10.3
+
+### Dependency updates
+
+- @gradio/atoms@0.21.0
+- @gradio/statustracker@0.12.3
+
+## 0.10.2
+
+### Fixes
+
+- [#12800](https://github.com/gradio-app/gradio/pull/12800) [`7a1c321`](https://github.com/gradio-app/gradio/commit/7a1c321b6546ba05a353488f5133e8262c4a8a39) - Bump svelte/kit for security reasons.  Thanks @freddyaboulton!
+
+### Dependency updates
+
+- @gradio/statustracker@0.12.2
+- @gradio/atoms@0.20.1
+- @gradio/utils@0.11.2
+- @gradio/icons@0.15.1
+- @gradio/theme@0.6.1
+
 ## 0.10.1
 
 ### Dependency updates

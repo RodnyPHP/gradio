@@ -13,9 +13,17 @@ export type ServerFunctions = Record<string, (...args: any[]) => Promise<any>>;
 export interface ComponentMeta {
 	type: string;
 	id: number;
-	props: SharedProps & Record<string, unknown>;
+	props: any;
 	documentation?: Documentation;
 	value?: any;
+	children?: any[];
+	parent?: any;
+	instance?: any;
+	component?: any;
+	has_modes?: boolean;
+	modify_stream_state?: any;
+	get_stream_state?: any;
+	set_time_limit?: any;
 	component_class_id: string;
 	key: string | number | null;
 	rendered_in?: number;
@@ -26,9 +34,9 @@ export interface ProcessedComponentMeta {
 	id: number;
 	props: { shared_props: SharedProps; props: Record<string, unknown> };
 	component: Component | LoadingComponent | null;
+	runtime: false | typeof import("svelte");
 	documentation?: Documentation;
 	children: ProcessedComponentMeta[];
-	//	parent?: ProcessedComponentMeta;
 	component_class_id: string; // ?;
 	key: string | number | null; // ?;
 	rendered_in?: number; // ?;
@@ -57,7 +65,7 @@ export interface Dependency {
 	inputs: number[];
 	outputs: number[];
 	backend_fn: boolean;
-	js: string | null; // frontend fn
+	js: string | true | null; // frontend fn or Python-to-JS transpilation marker
 	scroll_to_output: boolean; // used by loading_status
 	show_progress: "full" | "minimal" | "hidden"; // used by loading_status
 	show_progress_on: number[] | null; // used by loading_status
@@ -68,6 +76,11 @@ export interface Dependency {
 	cancels: number[];
 	types: DependencyTypes;
 	collects_event_data: boolean;
+	// `process_frontend_fn` only re-wraps scalar results into an array when
+	// `wrap` is true, so the resolved value can be a non-array. Keep the return
+	// type wide so callers don't assume an array unconditionally.
+	frontend_fn?: ((...args: unknown[]) => Promise<unknown[] | unknown>) | null;
+	api_visibility?: "public" | "private" | "undocumented";
 	//pending_request?: boolean; // added, not received from backend, unneeded
 	trigger_after?: number; // then events
 	trigger_only_on_success?: boolean; // success events
@@ -123,9 +136,11 @@ export type LoadingComponent = Promise<{
 export interface AppConfig {
 	root: string;
 	theme: string;
+	theme_mode: ThemeMode;
 	version: string;
 	max_file_size?: number;
 	autoscroll: boolean;
 	api_prefix: string;
 	api_url: string;
+	fill_height?: boolean;
 }

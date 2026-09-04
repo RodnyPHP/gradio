@@ -1,5 +1,166 @@
 # @gradio/dataset
 
+## 0.7.2
+
+### Dependency updates
+
+- @gradio/client@2.5.1
+
+## 0.7.2
+
+### Dependency updates
+
+- @gradio/client@2.5.0
+
+## 0.7.2
+
+### Fixes
+
+- [#13644](https://github.com/gradio-app/gradio/pull/13644) [`f0abb1e`](https://github.com/gradio-app/gradio/commit/f0abb1ea8e61f4b886296365639b9fe0492012a9) - restore shared props lost during frontend prop partitioning.  Thanks @dawoodkhan82!
+
+### Dependency updates
+
+- @gradio/client@2.4.0
+- @gradio/utils@0.14.0
+- @gradio/atoms@0.26.1
+- @gradio/upload@0.18.2
+- @gradio/textbox@0.14.2
+
+## 0.7.1
+
+### Dependency updates
+
+- @gradio/atoms@0.26.0
+- @gradio/client@2.3.1
+- @gradio/upload@0.18.1
+- @gradio/textbox@0.14.1
+
+## 0.7.0
+
+### Features
+
+- [#13526](https://github.com/gradio-app/gradio/pull/13526) [`53cb4ca`](https://github.com/gradio-app/gradio/commit/53cb4cae1ec3521e9170d12867253516413ba37a) - Run `pnpm lint` and `pnpm ts:check` on CI.  Thanks @abidlabs!
+
+### Dependency updates
+
+- @gradio/atoms@0.25.0
+- @gradio/utils@0.13.0
+- @gradio/client@2.3.0
+- @gradio/upload@0.18.0
+- @gradio/textbox@0.14.0
+
+## 0.6.0
+
+### Features
+
+- [#13502](https://github.com/gradio-app/gradio/pull/13502) [`429faeb`](https://github.com/gradio-app/gradio/commit/429faeb643fb1afc1722c0f63fafa11603f2c87f) - Ensure every component dispatches a `change` event when its value changes.  Thanks @abidlabs!
+
+### Dependency updates
+
+- @gradio/client@2.2.2
+
+## 0.5.9
+
+### Dependency updates
+
+- @gradio/client@2.2.1
+- @gradio/upload@0.17.10
+
+## 0.5.9
+
+### Fixes
+
+- [#13291](https://github.com/gradio-app/gradio/pull/13291) [`77fca72`](https://github.com/gradio-app/gradio/commit/77fca72b8eba2bcda19c31bba285af2642a4cc9d) - Dataset: fix gallery view using wrong component metadata index and fix broken pagination after Svelte 5 migration.  Thanks @ParamChordiya!
+
+### Dependency updates
+
+- @gradio/atoms@0.24.0
+- @gradio/upload@0.17.9
+- @gradio/textbox@0.13.9
+
+## 0.5.8
+
+### Features
+
+- [#13231](https://github.com/gradio-app/gradio/pull/13231) [`89f7a09`](https://github.com/gradio-app/gradio/commit/89f7a096ceb947c97ac5dce9f8b8d62e1361ad7b) - Layout tests.  Thanks @pngwn!
+
+### Dependency updates
+
+- @gradio/atoms@0.23.1
+- @gradio/client@2.2.0
+- @gradio/textbox@0.13.8
+
+## 0.5.7
+
+### Dependency updates
+
+- @gradio/utils@0.12.2
+- @gradio/atoms@0.23.0
+- @gradio/upload@0.17.8
+- @gradio/textbox@0.13.7
+
+## 0.5.6
+
+### Fixes
+
+- [#12566](https://github.com/gradio-app/gradio/pull/12566) [`7760161`](https://github.com/gradio-app/gradio/commit/7760161258abe6329b754dd6d2511fc3b61fed95) - Fix custom components in SSR Mode + Custom Component Examples.  Thanks @freddyaboulton!
+
+### Dependency updates
+
+- @gradio/utils@0.12.1
+- @gradio/textbox@0.13.6
+
+## 0.5.5
+
+### Dependency updates
+
+- @gradio/utils@0.12.0
+- @gradio/atoms@0.22.2
+- @gradio/upload@0.17.7
+- @gradio/textbox@0.13.5
+
+## 0.5.4
+
+### Dependency updates
+
+- @gradio/client@2.1.0
+
+## 0.5.4
+
+### Dependency updates
+
+- @gradio/utils@0.11.3
+- @gradio/atoms@0.22.0
+- @gradio/upload@0.17.6
+- @gradio/textbox@0.13.4
+
+## 0.5.3
+
+### Fixes
+
+- [#12818](https://github.com/gradio-app/gradio/pull/12818) [`6594c9c`](https://github.com/gradio-app/gradio/commit/6594c9c5b2829771f79dc04c6fafb6da72031b90) - Migrate Dataset to Svelte 5.  Thanks @freddyaboulton!
+
+### Dependency updates
+
+- @gradio/atoms@0.21.0
+- @gradio/client@2.0.4
+- @gradio/upload@0.17.5
+- @gradio/textbox@0.13.3
+
+## 0.5.2
+
+### Fixes
+
+- [#12800](https://github.com/gradio-app/gradio/pull/12800) [`7a1c321`](https://github.com/gradio-app/gradio/commit/7a1c321b6546ba05a353488f5133e8262c4a8a39) - Bump svelte/kit for security reasons.  Thanks @freddyaboulton!
+
+### Dependency updates
+
+- @gradio/atoms@0.20.1
+- @gradio/utils@0.11.2
+- @gradio/upload@0.17.4
+- @gradio/client@2.0.3
+- @gradio/textbox@0.13.2
+
 ## 0.5.1
 
 ### Dependency updates

@@ -1,6 +1,6 @@
 {
 	"name": "@gradio/atoms",
-	"version": "0.20.0",
+	"version": "0.26.1",
 	"description": "Gradio UI packages",
 	"type": "module",
 	"main": "src/index.ts",
@@ -8,11 +8,10 @@
 	"license": "ISC",
 	"dependencies": {
 		"@gradio/icons": "workspace:^",
-		"@gradio/markdown-code": "workspace:^",
 		"@gradio/utils": "workspace:^"
 	},
 	"peerDependencies": {
-		"svelte": "^5.43.4"
+		"svelte": "^5.48.0"
 	},
 	"exports": {
 		".": {

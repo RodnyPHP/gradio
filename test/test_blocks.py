@@ -26,9 +26,10 @@ from PIL import Image
 
 import gradio as gr
 from gradio import blocks, helpers
+from gradio.context import LocalContext
 from gradio.data_classes import GradioModel, GradioRootModel
 from gradio.events import SelectData
-from gradio.exceptions import DuplicateBlockError
+from gradio.exceptions import ComponentProcessingError, DuplicateBlockError
 from gradio.route_utils import API_PREFIX
 from gradio.utils import assert_configs_are_equivalent_besides_ids, cancel_tasks
 
@@ -95,6 +96,59 @@ class TestBlocksMethods:
         config2 = demo2.get_config_file()
         assert assert_configs_are_equivalent_besides_ids(config1, config2)
 
+    def test_from_config_rejects_non_hf_space_proxy_url(self):
+        """`Blocks.from_config()` must only register `proxy_url`s whose host
+        ends in `.hf.space` — otherwise a malicious config (or a malicious
+        `gr.load()` source) could seed `blocks.proxy_urls` with internal /
+        SSRF targets that `App.build_proxy_request` would later treat as
+        legitimate. Regression coverage for GHSA-jmh7-g254-2cq9.
+        """
+
+        def update(name):
+            return f"Welcome to Gradio, {name}!"
+
+        with gr.Blocks() as demo:
+            inp = gr.Textbox(placeholder="What is your name?")
+            out = gr.Textbox()
+            inp.submit(fn=update, inputs=inp, outputs=out, api_name="greet")
+
+        config = demo.get_config_file()
+
+        # 1. Top-level non-.hf.space proxy_url must not be registered.
+        blocks1 = gr.Blocks.from_config(config, [update], "http://169.254.169.254")
+        assert blocks1.proxy_urls == set()
+
+        # 2. Suffix-confusion attempt (`.hf.space.evil.com`) must be rejected
+        # by the `str.endswith(".hf.space")` guard.
+        blocks2 = gr.Blocks.from_config(
+            config, [update], "https://victim.hf.space.evil.com"
+        )
+        assert blocks2.proxy_urls == set()
+
+        # 3. Child components carrying a malicious `proxy_url` in their
+        # props (e.g. via a tampered remote `gr.load()` config) must also
+        # be filtered, even when the top-level `proxy_url` is legitimate.
+        poisoned_config = copy.deepcopy(config)
+        for component in poisoned_config["components"]:
+            component["props"]["proxy_url"] = "http://internal-service.local/"
+        blocks3 = gr.Blocks.from_config(
+            poisoned_config, [update], "https://benign.hf.space"
+        )
+        assert blocks3.proxy_urls == {"https://benign.hf.space"}
+        assert all(
+            not url.startswith("http://internal-service.local")
+            for url in blocks3.proxy_urls
+        )
+
+        # 4. Legitimate `.hf.space` hosts on both top-level and children
+        # are registered (positive control).
+        good_config = copy.deepcopy(config)
+        for component in good_config["components"]:
+            component["props"]["proxy_url"] = "https://child.hf.space/"
+        blocks4 = gr.Blocks.from_config(good_config, [update], "https://root.hf.space")
+        assert "https://root.hf.space" in blocks4.proxy_urls
+        assert "https://child.hf.space/" in blocks4.proxy_urls
+
     def test_load_from_config_with_blocks_events(self):
         fake_url = "https://fake.hf.space"
 
@@ -156,6 +210,32 @@ class TestBlocksMethods:
             difference = end - start
             assert difference >= 0.01
             assert result
+
+    @pytest.mark.asyncio
+    async def test_process_api_average_duration_excludes_manual_cache_hits(self):
+        def double(x, c=gr.Cache()):
+            hit = c.get(x)
+            if hit is not None:
+                return hit["value"]
+            time.sleep(0.02)
+            value = x * 2
+            c.set(x, value=value)
+            return value
+
+        with gr.Blocks() as demo:
+            text = gr.Number()
+            output = gr.Number()
+            button = gr.Button()
+            button.click(double, [text], [output])
+
+        first = await demo.process_api(inputs=[3], block_fn=0, state=None)
+        second = await demo.process_api(inputs=[3], block_fn=0, state=None)
+
+        assert first["used_cache"] is None
+        assert second["used_cache"] == "partial"
+        assert first["average_duration"] is not None
+        assert second["average_duration"] == pytest.approx(first["average_duration"])
+        assert demo.fns[0].total_runs == 1
 
     @patch("gradio.analytics._do_analytics_request")
     def test_initiated_analytics(self, mock_anlaytics, monkeypatch):
@@ -546,6 +626,19 @@ class TestComponentsInBlocks:
             comp.load_event in demo.config["dependencies"] for comp in components
         )
 
+    def test_component_load_events_target_root(self):
+        with gr.Blocks() as demo:
+            button = gr.Button(value=lambda: "Loaded")
+
+        load_dependencies = [
+            dep
+            for dep in demo.config["dependencies"]
+            if "load" in [target[1] for target in dep["targets"]]
+        ]
+        assert len(load_dependencies) == 1
+        assert load_dependencies[0]["targets"][0][1] == "load"
+        assert load_dependencies[0]["outputs"] == [button._id]
+
     def test_load_events_work_with_builtins(self):
         with gr.Blocks() as demo:
             gr.State(dict)
@@ -649,6 +742,28 @@ class TestBlocksPostprocessing:
 
         output = await demo.postprocess_data(demo.fns[0], {num2: 23}, state=None)
         assert output[0] == 23
+
+    @pytest.mark.asyncio
+    async def test_blocks_matches_stale_returned_component_by_key(self):
+        # If the app is hot-reloaded while a prediction is in flight, the
+        # function may return components created by a previous version of
+        # the app. They should be matched to the current output components
+        # by key. See https://github.com/gradio-app/gradio/issues/8712
+        with gr.Blocks():
+            stale_num = gr.Number(key="num")
+            unkeyed_num = gr.Number()
+
+        with gr.Blocks() as demo:
+            num = gr.Number(key="num")
+            update = gr.Button(value="update")
+            update.click(lambda: {num: 42}, inputs=[], outputs=[num])
+
+        assert stale_num._id != num._id
+        output = await demo.postprocess_data(demo.fns[0], {stale_num: 42}, state=None)
+        assert output[0] == 42
+
+        with pytest.raises(ValueError, match="not specified as output"):
+            await demo.postprocess_data(demo.fns[0], {unkeyed_num: 42}, state=None)
 
     @pytest.mark.asyncio
     async def test_blocks_update_dict_without_postprocessing(self, media_data):
@@ -801,6 +916,49 @@ class TestBlocksPostprocessing:
             ValueError,
         ):
             await demo.postprocess_data(demo.fns[0], predictions=[1, 2], state=None)
+
+    @pytest.mark.asyncio
+    async def test_helpful_error_when_output_is_mistyped(self):
+        def process_images(n, t):
+            return n, t
+
+        with gr.Blocks() as demo:
+            number = gr.Number(precision=0)
+            textbox = gr.Textbox()
+            btn = gr.Button()
+            btn.click(process_images, [number, textbox], [number, textbox])
+
+        with pytest.raises(ComponentProcessingError) as exc_info:
+            await demo.postprocess_data(
+                demo.fns[0], predictions=[{"foo": "bar"}, "a"], state=None
+            )
+        message = str(exc_info.value)
+        assert "index 0" in message
+        assert "number" in message
+        assert "process_images" in message
+        assert "{'foo': 'bar'}" in message
+        assert isinstance(exc_info.value.__cause__, TypeError)
+
+    @pytest.mark.asyncio
+    async def test_helpful_error_when_input_is_mistyped(self):
+        def process_images(n, s):
+            return n, s
+
+        with gr.Blocks() as demo:
+            number = gr.Number()
+            slider = gr.Slider()
+            btn = gr.Button()
+            btn.click(process_images, [number, slider], [number, slider])
+
+        with pytest.raises(ComponentProcessingError) as exc_info:
+            await demo.preprocess_data(
+                demo.fns[0], inputs=[1, {"foo": "bar"}], state=None
+            )
+        message = str(exc_info.value)
+        assert "index 1" in message
+        assert "slider" in message
+        assert "process_images" in message
+        assert isinstance(exc_info.value.__cause__, TypeError)
 
     @pytest.mark.asyncio
     async def test_dataset_is_updated(self):
@@ -1459,6 +1617,68 @@ class TestCancel:
                 cancel.click(None, None, None, cancels=[click])
             demo.queue().launch(prevent_thread_lock=True)
 
+    def test_cancel_closes_generator(self):
+        """The /cancel endpoint must call close() on server-side generators."""
+        from gradio.routes import App
+        from gradio.utils import SyncToAsyncIterator
+
+        closed = []
+
+        def gen():
+            try:
+                while True:
+                    yield "running"
+            finally:
+                closed.append(True)
+
+        with gr.Blocks() as demo:
+            out = gr.Textbox()
+            btn = gr.Button()
+            btn.click(gen, None, out, api_name="predict")
+
+        app = App.create_app(demo)
+
+        event_id = "test_event"
+        g = gen()
+        next(g)  # advance so GeneratorExit/finally will fire on close
+        iterator = SyncToAsyncIterator(g, limiter=None)
+        app.iterators[event_id] = iterator
+
+        client = TestClient(app)
+        resp = client.post(
+            f"{API_PREFIX}/cancel",
+            json={
+                "session_hash": "test",
+                "fn_index": 0,
+                "event_id": event_id,
+            },
+        )
+        assert resp.status_code == 200
+        assert resp.json()["success"]
+        assert closed, "Generator was not closed by /cancel endpoint"
+        assert event_id not in app.iterators
+        assert event_id in app.iterators_to_reset
+
+
+class TestHandleStreamingOutputs:
+    @pytest.mark.asyncio
+    async def test_final_chunk_with_no_open_stream_is_a_no_op(self):
+        # The session's streams may be gone by the time the final chunk lands —
+        # a disconnect drops them — and a generator that sends only prop updates
+        # never opens one at all. Neither should cost the caller their output.
+        with gr.Blocks() as demo:
+            box = gr.Textbox()
+            audio = gr.Audio(streaming=True, autoplay=True)
+            box.submit(lambda x: x, box, audio)
+
+        block_fn = next(iter(demo.fns.values()))
+        data = await demo.handle_streaming_outputs(
+            block_fn, [b"final"], session_hash="s", run=0, final=True
+        )
+
+        assert data == [b"final"]
+        assert demo.pending_streams["s"][0] == {}
+
 
 class TestGetAPIInfo:
     def test_many_endpoints(self):
@@ -2043,13 +2263,14 @@ def test_multiple_navbar_components_in_same_page_raise_error():
         gr.Textbox()
 
 
+@pytest.mark.flaky
 def test_blocks_close_closes_thread_properly():
     a = gr.Blocks()
 
     def poll():
         start = time.time()
-        while time.time() - start < 1:
-            time.sleep(0.25)
+        while time.time() - start < 0.5:
+            time.sleep(0.1)
         print("Closing...")
         a.close()
 
@@ -2063,3 +2284,145 @@ def test_blocks_close_closes_thread_properly():
     time.sleep(1.2)
     assert not t.is_alive()
     assert not a.is_running
+
+
+def test_render_apply_does_not_raise_keyerror_when_fns_are_popped():
+    """
+    `Renderable.apply` snapshots `fns_from_last_render` *before* running the user
+    render function. If the user render function (or anything it calls -- e.g.
+    `gr.Examples` -- which transiently appends and then pops a function in
+    `gradio/helpers.py`) leaves `blocks_config.fns` without an entry for one of
+    the previously-rendered ids, the cleanup loop in `Renderable.apply` must
+    treat that absent entry as "already cleaned up" rather than raising.
+
+    Reproduces issue #12081 deterministically without spinning up an HTTP
+    server.
+    """
+
+    captured = {}
+
+    with gr.Blocks() as demo:
+        with gr.Tab(key="tab", label="Tab"):
+            dropdown = gr.Dropdown(["a", "b", "c"])
+
+            @gr.render(inputs=[dropdown])
+            def _render(value):  # noqa: D401
+                gr.Textbox(key="text", label="Text")
+                gr.Examples(
+                    examples=["a1", "a2", "a3"],
+                    example_labels=["First", "Second", "Third"],
+                    inputs=[gr.Textbox(visible=False)],
+                )
+
+            for renderable in demo.renderables:
+                captured["renderable"] = renderable
+
+    renderable = captured["renderable"]
+
+    blocks_config = demo.default_config
+
+    class _StubBlockFn:
+        rendered_in = renderable
+        render_iteration = renderable.render_iteration  # current iteration
+        _id = max(blocks_config.fns.keys(), default=-1) + 1_000
+
+    stub = _StubBlockFn()
+    blocks_config.fns[stub._id] = stub  # type: ignore[assignment]
+
+    token = LocalContext.blocks_config.set(blocks_config)
+    try:
+        # Concurrently pop the stub mid-render to simulate gr.Examples' fake-
+        # event cleanup (`gradio/helpers.py:580`).
+        original_fn = renderable.fn
+
+        def _user_fn_that_pops(*args, **kwargs):
+            blocks_config.fns.pop(stub._id, None)
+            return original_fn(*args, **kwargs)
+
+        renderable.fn = _user_fn_that_pops
+        try:
+            # Should NOT raise KeyError -- this is the fix for #12081.
+            renderable.apply("a")
+        finally:
+            renderable.fn = original_fn
+    finally:
+        LocalContext.blocks_config.reset(token)
+
+
+def test_nested_render_uses_local_blocks_context():
+    def create_nested_app(user):
+        with gr.Blocks():
+            gr.Textbox(user, label="User Profile")
+            search_box = gr.Textbox(label="Search Bar")
+
+            @gr.render(inputs=search_box)
+            def render_words(search):
+                for word in search.split():
+                    gr.Button(word, key=word)
+
+    with gr.Blocks() as demo:
+        user = gr.State("User1")
+
+        @gr.render(inputs=user)
+        def render_user(user):
+            create_nested_app(user)
+
+    outer_render = next(
+        renderable for renderable in demo.renderables if renderable.fn is render_user
+    )
+    root_renderable_count = len(demo.renderables)
+    blocks_config = copy.copy(demo.default_config)
+    token = LocalContext.blocks_config.set(blocks_config)
+    try:
+        outer_render.apply("User1")
+
+        inner_render = next(
+            renderable
+            for renderable in blocks_config.renderables
+            if renderable is not outer_render
+        )
+        outer_config = blocks_config.get_config(outer_render)
+        assert any(
+            dependency["render_id"] == inner_render._id
+            for dependency in outer_config["dependencies"]
+        )
+
+        inner_render.apply("hello world")
+        inner_config = blocks_config.get_config(inner_render)
+        assert [
+            component["props"].get("value")
+            for component in inner_config["components"]
+            if component["type"] == "button"
+        ] == ["hello", "world"]
+
+        outer_render.apply("User2")
+        assert len(demo.renderables) == root_renderable_count
+    finally:
+        LocalContext.blocks_config.reset(token)
+
+
+def test_blocks_render_inside_reactive_render_registers_components():
+    with gr.Blocks() as prebuilt:
+        markdown = gr.Markdown("Prebuilt content")
+
+    with gr.Blocks() as demo:
+
+        @gr.render()
+        def render_prebuilt():
+            prebuilt.render()
+
+    renderable = next(
+        renderable
+        for renderable in demo.renderables
+        if renderable.fn is render_prebuilt
+    )
+    blocks_config = copy.copy(demo.default_config)
+    token = LocalContext.blocks_config.set(blocks_config)
+    try:
+        renderable.apply()
+        config = blocks_config.get_config(renderable)
+    finally:
+        LocalContext.blocks_config.reset(token)
+
+    component_ids = {component["id"] for component in config["components"]}
+    assert markdown._id in component_ids

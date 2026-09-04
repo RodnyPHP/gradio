@@ -1,5 +1,6 @@
 <script lang="ts">
-	export let guides = [] as any[];
+	let { guides = [] as any[] } = $props();
+
 	const COLOR_SETS = [
 		["from-green-100", "to-green-50"],
 		["from-yellow-100", "to-yellow-50"],
@@ -11,7 +12,7 @@
 </script>
 
 {#if guides && guides.length > 0}
-	<div class="guides-list grid grid-cols-1 lg:grid-cols-4 gap-4 pb-3 pt-2">
+	<div class="guides-list grid-cols-1 lg:grid-cols-4 gap-4 pb-3 pt-2 hidden">
 		{#each guides as guide, i}
 			<a
 				class="guide-box flex lg:col-span-1 flex-col group overflow-hidden relative rounded-xl shadow-sm hover:shadow-alternate transition-shadow bg-gradient-to-r {COLOR_SETS[

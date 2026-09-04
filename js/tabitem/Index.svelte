@@ -1,4 +1,4 @@
-<script context="module" lang="ts">
+<script module lang="ts">
 	export { default as BaseTabItem } from "./shared/TabItem.svelte";
 </script>
 
@@ -20,9 +20,9 @@
 	interactive={gradio.shared.interactive}
 	id={gradio.props.id}
 	order={gradio.props.order}
-	scale={gradio.props.scale}
+	scale={gradio.shared.scale}
 	component_id={gradio.props.component_id}
-	on:select={({ detail }) => gradio.dispatch("select", detail)}
+	onselect={(data) => gradio.dispatch("select", data)}
 >
-	<slot />
+	{@render props.children?.()}
 </TabItem>

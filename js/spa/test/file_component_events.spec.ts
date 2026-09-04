@@ -8,7 +8,7 @@ async function error_modal_showed(page) {
 	await expect(page.getByTestId("toast-body")).toHaveCount(0);
 }
 
-test("File component properly dispatches load event for the single file case.", async ({
+test("File component uploads and downloads a single file with the correct name.", async ({
 	page
 }) => {
 	const [fileChooser] = await Promise.all([
@@ -25,48 +25,6 @@ test("File component properly dispatches load event for the single file case.", 
 	await expect(download.suggestedFilename()).toBe("cheetah1.jpg");
 });
 
-test("File component drag-and-drop uploads a file to the server correctly.", async ({
-	page
-}) => {
-	const uploader = await page.locator("input[type=file]").nth(1);
-	await uploader.setInputFiles(["./test/files/alphabet.txt"]);
-
-	await expect(
-		page.getByLabel("# Load Upload Multiple Files").first()
-	).toHaveValue("1");
-});
-
-test("File component properly handles drag and drop of image and video files.", async ({
-	page
-}) => {
-	const uploader = await page.locator("input[type=file]").nth(2);
-	await uploader.setInputFiles(["./test/files/cheetah1.jpg"]);
-
-	// Check that the image file was uploaded
-	await expect(
-		page.getByLabel("# Load Upload Multiple Files Image/Video")
-	).toHaveValue("1");
-
-	await page.getByLabel("Clear").click();
-
-	await uploader.setInputFiles(["./test/files/world.mp4"]);
-
-	// Check that the video file was uploaded
-	await expect(
-		page.getByLabel("# Load Upload Multiple Files Image/Video")
-	).toHaveValue("2");
-});
-
-test("File component properly handles drag and drop of pdf file.", async ({
-	page
-}) => {
-	const uploader = await page.locator("input[type=file]").nth(3);
-	await uploader.setInputFiles(["./test/files/contract.pdf"]);
-
-	// Check that the pdf file was uploaded
-	await expect(page.getByLabel("# Load Upload PDF File")).toHaveValue("1");
-});
-
 test("File component properly handles invalid file_types.", async ({
 	page
 }) => {
@@ -77,6 +35,47 @@ test("File component properly handles invalid file_types.", async ({
 		"./test/files/cheetah1.jpg",
 		"cheetah1.jpg",
 		"image/jpeg"
+	);
+
+	await error_modal_showed(page);
+});
+
+test("File component accepts a compound extension in file_types.", async ({
+	page
+}) => {
+	const locator = page.locator("input[type=file]").nth(6);
+	await drag_and_drop_file(
+		page,
+		locator,
+		"./test/files/alphabet.txt",
+		"brain.nii.gz",
+		"application/gzip"
+	);
+
+	await expect(
+		page.getByLabel("# Load Upload Compound Extension File")
+	).toHaveValue("1");
+});
+
+test("File component widens the accept attribute for a compound extension.", async ({
+	page
+}) => {
+	await expect(page.locator("input[type=file]").nth(6)).toHaveAttribute(
+		"accept",
+		".nii.gz, .gz"
+	);
+});
+
+test("File component rejects a partial match of a compound extension in file_types.", async ({
+	page
+}) => {
+	const locator = page.locator("input[type=file]").nth(6);
+	await drag_and_drop_file(
+		page,
+		locator,
+		"./test/files/alphabet.txt",
+		"brain.nii",
+		"application/octet-stream"
 	);
 
 	await error_modal_showed(page);

@@ -1,5 +1,204 @@
 # @gradio/dataframe
 
+## 0.24.3
+
+### Dependency updates
+
+- @gradio/client@2.5.1
+
+## 0.24.3
+
+### Fixes
+
+- [#13744](https://github.com/gradio-app/gradio/pull/13744) [`ca9dec0`](https://github.com/gradio-app/gradio/commit/ca9dec0e2e07d33cf3551f5062ff35ab9acf3026) - Re-read the Dataframe virtual window whenever the row count changes.  Thanks @abidlabs!
+
+## 0.24.2
+
+### Dependency updates
+
+- @gradio/client@2.5.0
+
+## 0.24.2
+
+### Fixes
+
+- [#13661](https://github.com/gradio-app/gradio/pull/13661) [`8647a06`](https://github.com/gradio-app/gradio/commit/8647a06d13a77aefb818565e8766474dae8eeb70) - Keep fullscreen component controls inside the visible viewport when the page has a scrollbar.  Thanks @hysts!
+
+### Dependency updates
+
+- @gradio/client@2.4.0
+- @gradio/utils@0.14.0
+- @gradio/atoms@0.26.1
+- @gradio/statustracker@0.15.2
+- @gradio/upload@0.18.2
+- @gradio/button@0.8.2
+- @gradio/markdown-code@0.10.0
+- @gradio/checkbox@0.8.2
+
+## 0.24.1
+
+### Dependency updates
+
+- @gradio/statustracker@0.15.1
+- @gradio/button@0.8.1
+- @gradio/icons@0.16.0
+- @gradio/atoms@0.26.0
+- @gradio/client@2.3.1
+- @gradio/upload@0.18.1
+- @gradio/checkbox@0.8.1
+
+## 0.24.0
+
+### Features
+
+- [#13526](https://github.com/gradio-app/gradio/pull/13526) [`53cb4ca`](https://github.com/gradio-app/gradio/commit/53cb4cae1ec3521e9170d12867253516413ba37a) - Run `pnpm lint` and `pnpm ts:check` on CI.  Thanks @abidlabs!
+
+### Dependency updates
+
+- @gradio/atoms@0.25.0
+- @gradio/statustracker@0.15.0
+- @gradio/utils@0.13.0
+- @gradio/client@2.3.0
+- @gradio/upload@0.18.0
+- @gradio/button@0.8.0
+- @gradio/markdown-code@0.9.0
+- @gradio/checkbox@0.8.0
+
+## 0.23.5
+
+### Dependency updates
+
+- @gradio/client@2.2.2
+- @gradio/button@0.7.0
+
+## 0.23.4
+
+### Fixes
+
+- [#13240](https://github.com/gradio-app/gradio/pull/13240) [`0d670ad`](https://github.com/gradio-app/gradio/commit/0d670adf41a0b510f7fd745495dce1664d38f0e5) - Fix browser freeze when a dataframe's value is set (e.g. via a tab select event), and only dispatch the tabs select event when the selected tab actually changes.  Thanks @freddyaboulton!
+
+## 0.23.3
+
+### Dependency updates
+
+- @gradio/client@2.2.1
+- @gradio/upload@0.17.10
+- @gradio/markdown-code@0.8.0
+
+## 0.23.2
+
+### Fixes
+
+- [#13250](https://github.com/gradio-app/gradio/pull/13250) [`2e9eb51`](https://github.com/gradio-app/gradio/commit/2e9eb51d4da5e4a997ac2fc18e5814bacf6f818d) - Restore select-all checkbox in boolean column headers of `gr.Dataframe`.  Thanks @pngwn!
+- [#13259](https://github.com/gradio-app/gradio/pull/13259) [`b5e6491`](https://github.com/gradio-app/gradio/commit/b5e64918b721550bc3762169fda81c5270904eaa) - Dataframe: allow native context menu and text selection on static cells.  Thanks @pngwn!
+- [#13305](https://github.com/gradio-app/gradio/pull/13305) [`1d5994d`](https://github.com/gradio-app/gradio/commit/1d5994da102bd9bf2367f58789de508b1727b1bf) - Dataframe: fix extreme rendering slowdown with `datatype="date"` (and any future dtype with asymmetric string casts) by firing `EditableCell`'s shim-blur only on edit teardown instead of every render. Also makes the hidden sizing-row computation faster by avoiding Date rendering for every entry.  Thanks @pngwn!
+- [#13303](https://github.com/gradio-app/gradio/pull/13303) [`79c5776`](https://github.com/gradio-app/gradio/commit/79c577680978adfb5eeaa01944635e14dc67e5f1) - Rework `Dataframe` wrapping, truncation, and column width sizing.  Thanks @pngwn!
+
+### Dependency updates
+
+- @gradio/atoms@0.24.0
+- @gradio/statustracker@0.14.1
+- @gradio/checkbox@0.7.0
+- @gradio/upload@0.17.9
+
+## 0.23.1
+
+### Dependency updates
+
+- @gradio/atoms@0.23.1
+- @gradio/statustracker@0.14.0
+- @gradio/client@2.2.0
+- @gradio/markdown-code@0.7.0
+- @gradio/checkbox@0.6.7
+
+## 0.23.0
+
+### Features
+
+- [#13150](https://github.com/gradio-app/gradio/pull/13150) [`9487b60`](https://github.com/gradio-app/gradio/commit/9487b60670f6532eaccb3251d15f5505fa23d4e3) - migrate dataframe to svelte 5.  Thanks @pngwn!
+
+### Dependency updates
+
+- @gradio/utils@0.12.2
+- @gradio/atoms@0.23.0
+- @gradio/statustracker@0.13.1
+- @gradio/upload@0.17.8
+- @gradio/checkbox@0.6.6
+
+## 0.22.0
+
+### Features
+
+- [#13021](https://github.com/gradio-app/gradio/pull/13021) [`5c4dc6a`](https://github.com/gradio-app/gradio/commit/5c4dc6aca11575cf4fec6704afd48a54664f983f) - add core themes.  Thanks @hannahblair!
+
+### Dependency updates
+
+- @gradio/utils@0.12.1
+- @gradio/statustracker@0.13.0
+- @gradio/button@0.6.6
+- @gradio/checkbox@0.6.5
+
+## 0.21.7
+
+### Dependency updates
+
+- @gradio/button@0.6.5
+- @gradio/statustracker@0.12.5
+- @gradio/utils@0.12.0
+- @gradio/atoms@0.22.2
+- @gradio/markdown-code@0.6.1
+- @gradio/upload@0.17.7
+- @gradio/checkbox@0.6.4
+
+## 0.21.6
+
+### Fixes
+
+- [#12890](https://github.com/gradio-app/gradio/pull/12890) [`ac29df8`](https://github.com/gradio-app/gradio/commit/ac29df82a735c72c021c07e0816f78001147671b) - fix DataFrame NaN values becoming 0 after sorting.  Thanks @Mr-Neutr0n!
+
+### Dependency updates
+
+- @gradio/client@2.1.0
+- @gradio/button@0.6.4
+
+## 0.21.5
+
+### Dependency updates
+
+- @gradio/utils@0.11.3
+- @gradio/atoms@0.22.0
+- @gradio/statustracker@0.12.4
+- @gradio/upload@0.17.6
+- @gradio/checkbox@0.6.3
+
+## 0.21.4
+
+### Dependency updates
+
+- @gradio/atoms@0.21.0
+- @gradio/client@2.0.4
+- @gradio/statustracker@0.12.3
+- @gradio/upload@0.17.5
+- @gradio/checkbox@0.6.2
+
+## 0.21.3
+
+### Fixes
+
+- [#12779](https://github.com/gradio-app/gradio/pull/12779) [`ea2d3e9`](https://github.com/gradio-app/gradio/commit/ea2d3e985a8b42d188e551f517c5825c00790628) - Migrate Audio + Upload + Atoms to Svelte 5.  Thanks @dawoodkhan82!
+
+### Dependency updates
+
+- @gradio/button@0.6.3
+- @gradio/statustracker@0.12.2
+- @gradio/atoms@0.20.1
+- @gradio/utils@0.11.2
+- @gradio/icons@0.15.1
+- @gradio/upload@0.17.4
+- @gradio/client@2.0.3
+- @gradio/markdown-code@0.6.1
+- @gradio/checkbox@0.6.1
+
 ## 0.21.2
 
 ### Dependency updates

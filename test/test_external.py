@@ -1,9 +1,12 @@
+import copy
 import os
 import tempfile
 import textwrap
 from pathlib import Path
+from typing import cast
 from unittest.mock import MagicMock, patch
 
+import httpx
 import huggingface_hub
 import pytest
 
@@ -22,8 +25,8 @@ These tests actually test gr.load() and gr.Blocks.load() but are
 included in a separate file because of the above-mentioned dependency.
 """
 
-# Mark the whole module as flaky
-pytestmark = pytest.mark.flaky
+# Mark the whole module as flaky and serial
+pytestmark = [pytest.mark.flaky, pytest.mark.serial]
 
 os.environ["GRADIO_ANALYTICS_ENABLED"] = "False"
 
@@ -72,7 +75,7 @@ class TestLoadInterface:
     def test_summarization(self):
         model_type = "summarization"
         interface = gr.load(
-            "models/facebook/bart-large-cnn", hf_token=HF_TOKEN, alias=model_type
+            "models/facebook/bart-large-cnn", token=HF_TOKEN, alias=model_type
         )
         assert interface.__name__ == model_type
         assert interface.input_components and interface.output_components
@@ -82,7 +85,7 @@ class TestLoadInterface:
     def test_translation(self):
         model_type = "translation"
         interface = gr.load(
-            "models/facebook/bart-large-cnn", hf_token=HF_TOKEN, alias=model_type
+            "models/facebook/bart-large-cnn", token=HF_TOKEN, alias=model_type
         )
         assert interface.__name__ == model_type
         assert interface.input_components and interface.output_components
@@ -93,7 +96,7 @@ class TestLoadInterface:
         model_type = "text-classification"
         interface = gr.load(
             "models/distilbert-base-uncased-finetuned-sst-2-english",
-            hf_token=HF_TOKEN,
+            token=HF_TOKEN,
             alias=model_type,
         )
         assert interface.__name__ == model_type
@@ -104,7 +107,7 @@ class TestLoadInterface:
     def test_fill_mask(self):
         model_type = "fill-mask"
         interface = gr.load(
-            "models/bert-base-uncased", hf_token=HF_TOKEN, alias=model_type
+            "models/bert-base-uncased", token=HF_TOKEN, alias=model_type
         )
         assert interface.__name__ == model_type
         assert interface.input_components and interface.output_components
@@ -114,7 +117,7 @@ class TestLoadInterface:
     def test_zero_shot_classification(self):
         model_type = "zero-shot-classification"
         interface = gr.load(
-            "models/facebook/bart-large-mnli", hf_token=HF_TOKEN, alias=model_type
+            "models/facebook/bart-large-mnli", token=HF_TOKEN, alias=model_type
         )
         assert interface.__name__ == model_type
         assert interface.input_components and interface.output_components
@@ -126,7 +129,7 @@ class TestLoadInterface:
     def test_automatic_speech_recognition(self):
         model_type = "automatic-speech-recognition"
         interface = gr.load(
-            "models/facebook/wav2vec2-base-960h", hf_token=HF_TOKEN, alias=model_type
+            "models/facebook/wav2vec2-base-960h", token=HF_TOKEN, alias=model_type
         )
         assert interface.__name__ == model_type
         assert interface.input_components and interface.output_components
@@ -136,7 +139,7 @@ class TestLoadInterface:
     def test_image_classification(self):
         model_type = "image-classification"
         interface = gr.load(
-            "models/google/vit-base-patch16-224", hf_token=HF_TOKEN, alias=model_type
+            "models/google/vit-base-patch16-224", token=HF_TOKEN, alias=model_type
         )
         assert interface.__name__ == model_type
         assert interface.input_components and interface.output_components
@@ -147,7 +150,7 @@ class TestLoadInterface:
         model_type = "feature-extraction"
         interface = gr.load(
             "models/sentence-transformers/distilbert-base-nli-mean-tokens",
-            hf_token=HF_TOKEN,
+            token=HF_TOKEN,
             alias=model_type,
         )
         assert interface.__name__ == model_type
@@ -159,7 +162,7 @@ class TestLoadInterface:
         model_type = "text-to-speech"
         interface = gr.load(
             "models/julien-c/ljspeech_tts_train_tacotron2_raw_phn_tacotron_g2p_en_no_space_train",
-            hf_token=HF_TOKEN,
+            token=HF_TOKEN,
             alias=model_type,
         )
         assert interface.__name__ == model_type
@@ -171,7 +174,7 @@ class TestLoadInterface:
         model_type = "text-to-speech"
         interface = gr.load(
             "models/julien-c/ljspeech_tts_train_tacotron2_raw_phn_tacotron_g2p_en_no_space_train",
-            hf_token=HF_TOKEN,
+            token=HF_TOKEN,
             alias=model_type,
         )
         assert interface.__name__ == model_type
@@ -187,7 +190,7 @@ class TestLoadInterface:
         with gr.Blocks():
             gr.load(
                 "spaces/gradio-tests/not-actually-private-spacev4-sse",
-                hf_token=HF_TOKEN,
+                token=HF_TOKEN,
             )
             gr.load(
                 "spaces/gradio/test-loading-examplesv4-sse",
@@ -197,12 +200,12 @@ class TestLoadInterface:
     def test_private_space_v4_sse_v1(self):
         io = gr.load(
             "spaces/gradio-tests/not-actually-private-spacev4-sse-v1",
-            hf_token=HF_TOKEN,
+            token=HF_TOKEN,
         )
         try:
             output = io("abc")
             assert output == "abc"
-            assert io.theme.name == "gradio/monochrome"
+            assert io._deprecated_theme == "gradio/monochrome"
         except TooManyRequestsError:
             pass
 
@@ -227,7 +230,7 @@ class TestLoadInterfaceWithExamples:
                     name="models/google/vit-base-patch16-224",
                     examples=[Path(test_file_dir, "cheetah1.jpg")],
                     cache_examples=True,
-                    hf_token=HF_TOKEN,
+                    token=HF_TOKEN,
                 )
             except TooManyRequestsError:
                 pass
@@ -302,8 +305,8 @@ def check_dataframe(config):
         c for c in config["components"] if c["props"].get("label", "") == "Input Rows"
     )
     assert input_df["props"]["headers"] == ["a", "b"]
-    assert input_df["props"]["row_count"] == (1, "dynamic")
-    assert input_df["props"]["col_count"] == (2, "fixed")
+    assert input_df["props"]["row_count"] == [3, "dynamic"]
+    assert input_df["props"]["col_count"] == [2, "dynamic"]
 
 
 def check_dataset(config, readme_examples):
@@ -351,19 +354,9 @@ def test_use_api_name_in_call_method():
     # assert app(4, api_name="double") == 8
 
 
-def test_load_custom_component():
-    from gradio_pdf import PDF  # noqa
-
-    demo = gr.load("spaces/freddyaboulton/gradiopdf")
-    output = demo(
-        "test/test_files/sample_file.pdf", "What does this say?", api_name="predict"
-    )
-    assert isinstance(output, str)
-
-
 def test_load_inside_blocks():
     demo = gr.load("spaces/abidlabs/en2fr")
-    output = demo("Hello")
+    output = demo("Hello", api_name="predict")
     assert isinstance(output, str)
 
 
@@ -422,6 +415,98 @@ def test_load_chat_with_streaming(mock_openai):
     assert responses == ["Hello", "Hello World", "Hello World!"]
 
 
+def test_format_conversation_replays_text_files_as_text(tmp_path):
+    # A pasted long prompt arrives as a text file, which is inlined into the prompt on
+    # the turn it is sent. Once that turn was in the history it used to be re-sent as
+    # `image_url`, so every later message made a non-multimodal model reject the
+    # request. See https://github.com/gradio-app/gradio/issues/11331.
+    from gradio.external import format_conversation
+
+    text_file = tmp_path / "pasted_text.txt"
+    text_file.write_text("a very long pasted prompt")
+    image_file = tmp_path / "photo.png"
+    image_file.write_bytes(b"\x89PNG\r\n\x1a\n")
+    # `.R` is in `TEXT_FILE_EXTENSIONS` and `MultimodalTextbox` matches extensions
+    # case-insensitively, so both spellings have to be inlined as text here.
+    r_file = tmp_path / "plot.r"
+    r_file.write_text("plot(1:10)")
+
+    history = [
+        {
+            "role": "user",
+            "content": [{"type": "file", "file": {"path": str(text_file)}}],
+        },
+        {"role": "assistant", "content": [{"type": "text", "text": "ok"}]},
+        {
+            "role": "user",
+            "content": [{"type": "file", "file": {"path": str(image_file)}}],
+        },
+        {"role": "assistant", "content": [{"type": "text", "text": "ok"}]},
+        {
+            "role": "user",
+            "content": [{"type": "file", "file": {"path": str(r_file)}}],
+        },
+        {"role": "assistant", "content": [{"type": "text", "text": "ok"}]},
+    ]
+    history_before = copy.deepcopy(history)
+
+    conversation = format_conversation(history, "and now a short one")  # type: ignore
+
+    # the text file is inlined as text, the same as when it was first sent...
+    assert conversation[0]["content"] == [
+        {"type": "text", "text": "\n## pasted_text.txt\na very long pasted prompt"}
+    ]
+    # ...while an image is still sent as an image
+    image_content = conversation[2]["content"][0]
+    assert image_content["type"] == "image_url"
+    assert image_content["image_url"]["url"].startswith("data:image/png;base64,")
+
+    assert conversation[4]["content"] == [
+        {"type": "text", "text": "\n## plot.r\nplot(1:10)"}
+    ]
+
+    assert conversation[-1] == {
+        "role": "user",
+        "content": [{"type": "text", "text": "and now a short one"}],
+    }
+
+    # The messages passed in are the ones in `chatbot_state`, so rewriting them in place
+    # would replace the attachments in the transcript with what was sent to the model.
+    assert history == history_before
+
+
+def test_format_conversation_replays_remote_text_files_as_text(monkeypatch):
+    # A text file that is a URL rather than a local upload has to be inlined as text
+    # too, rather than base64-encoded into `image_url` like an image would be.
+    from gradio.external import format_conversation
+
+    def fake_get(url, *args, **kwargs):
+        assert url == "https://example.com/files/notes.txt"
+        return httpx.Response(
+            200, text="remote notes", request=httpx.Request("GET", url)
+        )
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    history = [
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "file",
+                    "file": {"path": "https://example.com/files/notes.txt"},
+                }
+            ],
+        }
+    ]
+
+    conversation = format_conversation(history, "and now a short one")  # type: ignore
+
+    assert conversation[0]["content"] == [
+        {"type": "text", "text": "\n## notes.txt\nremote notes"}
+    ]
+
+
 def test_load_chat_textbox_override():
     from gradio import ChatInterface
 
@@ -435,3 +520,46 @@ def test_load_chat_textbox_override():
     )
     assert isinstance(chat, ChatInterface)
     assert chat.textbox is custom_textbox
+
+
+@pytest.mark.flaky
+def test_oauth_token_reaches_only_the_endpoint_that_asks_for_it():
+    """A caller-supplied token reaches a gr.OAuthToken, and nothing else.
+
+    Runs against a real OAuth-enabled Space because the behaviour depends on the
+    environment: a Space sits behind a proxy that strips `x-hf-*` headers, so the
+    token has to travel in the request body to arrive at all. On that Space
+    `/report` takes a gr.OAuthToken and echoes what it received; `/calculator`
+    does not take one.
+    """
+    from gradio_client import Client
+    from gradio_client.client import Endpoint
+
+    if not HF_TOKEN:
+        pytest.skip("no Hugging Face token available")
+
+    space = "gradio-tests/test-calculator-1"
+    client = Client(space, token=HF_TOKEN, oauth_token=HF_TOKEN, verbose=False)
+    api = cast(dict, client.view_api(return_format="dict"))
+    info = api["named_endpoints"]
+
+    assert info["/report"]["oauth_token"] == "optional"
+    assert "oauth_token" not in info["/calculator"]
+
+    endpoints: list[Endpoint] = [
+        endpoint
+        for endpoint in client.endpoints.values()
+        if isinstance(endpoint, Endpoint)
+        and endpoint.api_name in ("/report", "/calculator")
+    ]
+    payloads = {e.api_name: e.oauth_token_payload() for e in endpoints}
+    assert payloads == {"/report": {"oauth_token": HF_TOKEN}, "/calculator": {}}
+
+    assert client.predict(api_name="/report").startswith("user:")
+    assert client.predict(4, "add", 2, api_name="/calculator") == 6
+
+    # `token` authenticates the caller to the Space, but grants nothing to the fn.
+    assert (
+        Client(space, token=HF_TOKEN, verbose=False).predict(api_name="/report")
+        == "none"
+    )

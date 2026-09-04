@@ -53,6 +53,7 @@ class Dataframe(Component):
     """
     This component displays a table of value spreadsheet-like component. Can be used to display data as an output component, or as an input to collect data from the user.
     Demos: filter_records, matrix_transpose, tax_calculator, sort_records
+    Guides: styling-the-gradio-dataframe, filters-tables-and-stats
     """
 
     EVENTS = [Events.change, Events.input, Events.select, Events.edit]
@@ -125,7 +126,7 @@ class Dataframe(Component):
             latex_delimiters: A list of dicts of the form {"left": open delimiter (str), "right": close delimiter (str), "display": whether to display in newline (bool)} that will be used to render LaTeX expressions. If not provided, `latex_delimiters` is set to `[{ "left": "$$", "right": "$$", "display": True }]`, so only expressions enclosed in $$ delimiters will be rendered as LaTeX, and in a new line. Pass in an empty list to disable LaTeX rendering. For more information, see the [KaTeX documentation](https://katex.org/docs/autorender.html). Only applies to columns whose datatype is "markdown".
             label: the label for this component. Appears above the component and is also used as the header if there are a table of examples for this component. If None and used in a `gr.Interface`, the label will be the name of the parameter this component is assigned to.
             show_label: if True, will display label.
-            every: Continously calls `value` to recalculate it if `value` is a function (has no effect otherwise). Can provide a Timer whose tick resets `value`, or a float that provides the regular interval for the reset Timer.
+            every: Continuously calls `value` to recalculate it if `value` is a function (has no effect otherwise). Can provide a Timer whose tick resets `value`, or a float that provides the regular interval for the reset Timer.
             inputs: Components that are used as inputs to calculate `value` if `value` is a function (has no effect otherwise). `value` is recalculated any time the inputs change.
             max_height: The maximum height of the dataframe, specified in pixels if a number is passed, or in CSS units if a string is passed. If more rows are created than can fit in the height, a scrollbar will appear.
             scale: relative size compared to adjacent Components. For example if Components A and B are in a Row, and A has scale=2, and B has scale=1, A will be twice as wide as B. Should be an integer. scale applies in Rows, and to top-level Components in Blocks where fill_height=True.
@@ -275,7 +276,7 @@ class Dataframe(Component):
         Parameters:
             payload: the uploaded spreadsheet data as an object with `headers` and `data` attributes. Note that sorting the columns in the browser will not affect the values passed to this function.
         Returns:
-            Passes the uploaded spreadsheet data as a `pandas.DataFrame`, `numpy.array`, `polars.DataFrame`, or native 2D Python `list[list]` depending on `type`
+            Passes the uploaded spreadsheet data as a `pandas.DataFrame`, `numpy.array`, `polars.DataFrame`, or native 2D Python `list[list]` depending on `type`.
         """
         import pandas as pd
 
@@ -471,7 +472,15 @@ class Dataframe(Component):
     ) -> DataframeData:
         """
         Parameters:
-            value: Expects data in any of these formats: `pandas.DataFrame`, `pandas.Styler`, `numpy.array`, `polars.DataFrame`, `list[list]`, `list`, or a `dict` with keys 'data' (and optionally 'headers'), or `str` path to a csv, which is rendered as the spreadsheet.
+            value: Expects data in any of these formats:
+                - `pandas.DataFrame`
+                - `pandas.Styler`
+                - `numpy.array`
+                -  `polars.DataFrame`
+                - `list[list]`
+                - `list`
+                - `dict` with keys 'data' (and optionally 'headers')
+                - `str` path to a csv, which is rendered as the spreadsheet.
         Returns:
             the uploaded spreadsheet data as an object with `headers` and `data` keys and optional `metadata` key
         """
@@ -553,26 +562,32 @@ class Dataframe(Component):
             ]
 
         elif isinstance(value, np.ndarray):
-            self.datatype = [
-                dtype_mapping.get(
-                    numbers_re.sub(
-                        "", brackets_re.sub("", str(type(value[0, i]).__name__))
-                    ).lower(),
-                    "str",
-                )
-                for i in range(value.shape[1])
-            ]
+            if value.size == 0 or value.ndim < 2:
+                self.datatype = "str"
+            else:
+                self.datatype = [
+                    dtype_mapping.get(
+                        numbers_re.sub(
+                            "", brackets_re.sub("", str(type(value[0, i]).__name__))
+                        ).lower(),
+                        "str",
+                    )
+                    for i in range(value.shape[1])
+                ]
 
         elif isinstance(value, list):
-            self.datatype = [
-                dtype_mapping.get(
-                    numbers_re.sub(
-                        "", brackets_re.sub("", str(type(val).__name__))
-                    ).lower(),
-                    "str",
-                )
-                for val in value[0]
-            ]
+            if len(value) == 0 or not isinstance(value[0], (list, tuple)):
+                self.datatype = "str"
+            else:
+                self.datatype = [
+                    dtype_mapping.get(
+                        numbers_re.sub(
+                            "", brackets_re.sub("", str(type(val).__name__))
+                        ).lower(),
+                        "str",
+                    )
+                    for val in value[0]
+                ]
 
         elif _is_polars_available():
             pl = _import_polars()

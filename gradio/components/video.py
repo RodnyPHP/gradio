@@ -16,19 +16,18 @@ from gradio_client import utils as client_utils
 from gradio_client.documentation import document
 
 from gradio import processing_utils, utils
+from gradio._vendor.ffmpy import FFmpeg
 from gradio.components.base import Component, StreamingOutput
 from gradio.components.button import Button
 from gradio.components.image_editor import WatermarkOptions, WebcamOptions
 from gradio.data_classes import FileData, MediaStreamChunk
 from gradio.events import Events
 from gradio.i18n import I18nData
+from gradio.profiling import trace_phase_sync, traced_sync
 from gradio.utils import get_upload_folder, set_default_buttons
 
 if TYPE_CHECKING:
     from gradio.components import Timer
-
-
-from ffmpy import FFmpeg
 
 
 @document()
@@ -41,6 +40,7 @@ class Video(StreamingOutput, Component):
     If the conversion fails, the original video is returned.
 
     Demos: video_identity_2
+    Guides: streaming-inputs, streaming-outputs, object-detection-from-video
     """
 
     data_model = FileData
@@ -100,7 +100,7 @@ class Video(StreamingOutput, Component):
             height: The height of the component, specified in pixels if a number is passed, or in CSS units if a string is passed. This has no effect on the preprocessed video file, but will affect the displayed video.
             width: The width of the component, specified in pixels if a number is passed, or in CSS units if a string is passed. This has no effect on the preprocessed video file, but will affect the displayed video.
             label: the label for this component. Appears above the component and is also used as the header if there are a table of examples for this component. If None and used in a `gr.Interface`, the label will be the name of the parameter this component is assigned to.
-            every: continously calls `value` to recalculate it if `value` is a function (has no effect otherwise). Can provide a Timer whose tick resets `value`, or a float that provides the regular interval for the reset Timer.
+            every: continuously calls `value` to recalculate it if `value` is a function (has no effect otherwise). Can provide a Timer whose tick resets `value`, or a float that provides the regular interval for the reset Timer.
             inputs: components that are used as inputs to calculate `value` if `value` is a function (has no effect otherwise). `value` is recalculated any time the inputs change.
             show_label: if True, will display label.
             container: if True, will place the component in a container - providing some extra padding around the border.
@@ -188,6 +188,7 @@ class Video(StreamingOutput, Component):
         )
         self._value_description = "a string filepath to a video"
 
+    @traced_sync("preprocess_video")
     def preprocess(self, payload: FileData | None) -> str | None:
         """
         Parameters:
@@ -249,10 +250,13 @@ class Video(StreamingOutput, Component):
         else:
             return str(file_name)
 
+    @traced_sync("postprocess_video")
     def postprocess(self, value: str | Path | None) -> FileData | None:
         """
         Parameters:
-            value: Expects a {str} or {pathlib.Path} filepath to a video which is displayed, or a {Tuple[str | pathlib.Path, str | pathlib.Path | None]} where the first element is a filepath to a video and the second element is an optional filepath to a subtitle file.
+            value: Expects one of either:
+            - a {str} or {pathlib.Path} filepath to a video which is displayed
+            - a {Tuple[str | pathlib.Path, str | pathlib.Path | None]} where the first element is a filepath to a video and the second element is an optional filepath to a subtitle file.
         Returns:
             FileData object containing the video file.
         """
@@ -269,6 +273,7 @@ class Video(StreamingOutput, Component):
         Processes a video to ensure that it is in the correct format
         and adds a watermark if requested.
         """
+
         if video is None:
             return None
         video = str(video)
@@ -298,7 +303,10 @@ class Video(StreamingOutput, Component):
             warnings.warn(
                 "Video does not have browser-compatible container or codec. Converting to mp4."
             )
-            video = processing_utils.convert_video_to_playable_mp4(video)
+            with trace_phase_sync("postprocess_video_convert_video_to_playable_mp4"):
+                video = processing_utils.convert_video_to_playable_mp4(
+                    video, cache_dir=self.GRADIO_CACHE
+                )
         # Recalculate the format in case convert_video_to_playable_mp4 already made it the selected format
         returned_format = utils.get_extension_from_file_path_or_url(video).lower()
         if (
@@ -401,8 +409,6 @@ class Video(StreamingOutput, Component):
         """
         Convert subtitle format to VTT and process the video to ensure it meets the HTML5 requirements.
         """
-        import json
-        from pathlib import Path
 
         def srt_to_vtt(srt_file_path, vtt_file_path):
             """Convert an SRT subtitle file to a VTT subtitle file"""

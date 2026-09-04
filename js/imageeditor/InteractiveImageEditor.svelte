@@ -1,4 +1,4 @@
-<script lang="ts" context="module">
+<script module lang="ts">
 	export interface EditorData {
 		background: FileData | null;
 		layers: FileData[] | null;
@@ -13,7 +13,6 @@
 </script>
 
 <script lang="ts">
-	import { createEventDispatcher } from "svelte";
 	import { type I18nFormatter } from "@gradio/utils";
 	import { prepare_files, type FileData, type Client } from "@gradio/client";
 	import { type CommandNode } from "./shared/core/commands";
@@ -31,44 +30,82 @@
 		type WebcamOptions
 	} from "./shared/types";
 
-	export let brush: IBrush;
-	export let eraser: Eraser;
-	export let sources: Source[];
-	export let i18n: I18nFormatter;
-	export let root: string;
-	export let label: string | undefined = undefined;
-	export let show_label: boolean;
-	export let changeable = false;
-	export let theme_mode: "dark" | "light";
-
-	export let layers: FileData[];
-	export let composite: FileData | null;
-	export let background: FileData | null;
-
-	export let layer_options: LayerOptions;
-	export let transforms: Transform[];
-	export let accept_blobs: (a: any) => void;
-
-	export let canvas_size: [number, number];
-	export let fixed_canvas = false;
-	export let realtime: boolean;
-	export let upload: Client["upload"];
-	export let is_dragging: boolean;
-	export let placeholder: string | undefined = undefined;
-	export let border_region: number;
-	export let full_history: CommandNode | null = null;
-	export let webcam_options: WebcamOptions;
-	export let show_download_button = false;
-
-	const dispatch = createEventDispatcher<{
-		clear?: never;
-		upload?: never;
-		change?: never;
-		receive_null?: never;
-	}>();
+	let {
+		brush,
+		eraser,
+		sources,
+		i18n,
+		root,
+		label = undefined,
+		show_label,
+		changeable = false,
+		theme_mode,
+		layers,
+		composite,
+		background,
+		layer_options = {
+			allow_additional_layers: true,
+			layers: [],
+			disabled: false
+		},
+		transforms,
+		accept_blobs,
+		canvas_size,
+		fixed_canvas = false,
+		realtime = false,
+		upload,
+		is_dragging = $bindable(),
+		placeholder = undefined,
+		border_region,
+		full_history = $bindable(null),
+		webcam_options = { mirror: true, constraints: {} },
+		show_download_button = false,
+		image_id = $bindable(null),
+		onclear,
+		onupload,
+		onchange,
+		oninput,
+		onsave,
+		onreceive_null,
+		ondownload_error
+	}: {
+		brush: IBrush | false;
+		eraser: Eraser | false;
+		sources: Source[];
+		i18n: I18nFormatter;
+		root: string;
+		label?: string;
+		show_label: boolean;
+		changeable?: boolean;
+		theme_mode: "dark" | "light";
+		layers: FileData[];
+		composite: FileData | null;
+		background: FileData | null;
+		layer_options?: LayerOptions;
+		transforms: Transform[];
+		accept_blobs: (a: any) => void;
+		canvas_size: [number, number];
+		fixed_canvas?: boolean;
+		realtime?: boolean;
+		upload: Client["upload"];
+		is_dragging?: boolean;
+		placeholder?: string;
+		border_region: number;
+		full_history?: CommandNode | null;
+		webcam_options?: WebcamOptions;
+		show_download_button?: boolean;
+		image_id?: null | string;
+		onclear?: () => void;
+		onupload?: () => void;
+		onchange?: () => void;
+		oninput?: () => void;
+		onsave?: () => void;
+		onreceive_null?: () => void;
+		ondownload_error?: (error: string) => void;
+	} = $props();
 
 	let editor: ImageEditor;
-	let has_drawn = false;
+	let has_drawn = $state(false);
 
 	function is_not_null(o: Blob | null): o is Blob {
 		return !!o;
@@ -78,9 +115,53 @@
 		return !!o;
 	}
 
-	$: if (background_image) dispatch("upload");
+	async function upload_original(
+		file_data: FileData | null,
+		fallback_name: string
+	): Promise<FileData | null> {
+		if (!file_data) return null;
+
+		let file = file_data.blob;
+		if (!file) {
+			if (!file_data.url) throw new Error("Image file has no URL");
+			const response = await fetch(file_data.url);
+			if (!response.ok) throw new Error("Image file could not be fetched");
+			const blob = await response.blob();
+			file = new File([blob], file_data.orig_name || fallback_name, {
+				type: file_data.mime_type || blob.type
+			});
+		}
+
+		const uploaded = await upload(await prepare_files([file]), root);
+		return Array.isArray(uploaded) ? uploaded[0] : uploaded;
+	}
+
+	async function upload_original_data(): Promise<ImageBlobs> {
+		const [uploaded_background, uploaded_composite, ...uploaded_layers] =
+			await Promise.all([
+				upload_original(background, "background.png"),
+				upload_original(composite, "composite.png"),
+				...layers.map((layer, i) => upload_original(layer, `layer_${i}.png`))
+			]);
+
+		return {
+			background: uploaded_background,
+			layers: uploaded_layers.filter(is_file_data),
+			composite: uploaded_composite
+		};
+	}
+
+	$effect(() => {
+		if (background_image) onupload?.();
+	});
 
 	export async function get_data(): Promise<ImageBlobs> {
+		if (!has_user_edits) {
+			try {
+				return await upload_original_data();
+			} catch {}
+		}
+
 		let blobs;
 		try {
 			blobs = await editor.get_blobs();
@@ -88,38 +169,43 @@
 			return { background: null, layers: [], composite: null };
 		}
 
-		const bg = blobs.background
+		const background_upload = blobs.background
 			? upload(
 					await prepare_files([new File([blobs.background], "background.png")]),
 					root
 				)
 			: Promise.resolve(null);
 
-		const layers = blobs.layers
+		const layer_uploads = blobs.layers
 			.filter(is_not_null)
 			.map(async (blob, i) =>
 				upload(await prepare_files([new File([blob], `layer_${i}.png`)]), root)
 			);
 
-		const composite = blobs.composite
+		const composite_upload = blobs.composite
 			? upload(
 					await prepare_files([new File([blobs.composite], "composite.png")]),
 					root
 				)
 			: Promise.resolve(null);
 
-		const [background, composite_, ...layers_] = await Promise.all([
-			bg,
-			composite,
-			...layers
-		]);
+		const [uploaded_background, uploaded_composite, ...uploaded_layers] =
+			await Promise.all([
+				background_upload,
+				composite_upload,
+				...layer_uploads
+			]);
 
 		return {
-			background: Array.isArray(background) ? background[0] : background,
-			layers: layers_
+			background: Array.isArray(uploaded_background)
+				? uploaded_background[0]
+				: uploaded_background,
+			layers: uploaded_layers
 				.flatMap((layer) => (Array.isArray(layer) ? layer : [layer]))
 				.filter(is_file_data),
-			composite: Array.isArray(composite_) ? composite_[0] : composite_
+			composite: Array.isArray(uploaded_composite)
+				? uploaded_composite[0]
+				: uploaded_composite
 		};
 	}
 
@@ -127,16 +213,17 @@
 		if (!editor) return;
 		if (value == null) {
 			editor.handle_remove();
-			dispatch("receive_null");
+			onreceive_null?.();
 		}
 	}
 
-	$: handle_value({ layers, composite, background });
+	$effect(() => {
+		handle_value({ layers, composite, background });
+	});
 
-	let background_image = false;
-	let can_undo: boolean;
-
-	export let image_id: null | string = null;
+	let background_image = $state(false);
+	let can_undo = $state(false);
+	let has_user_edits = $state(false);
 
 	type BinaryImages = [string, string, File, number | null][];
 
@@ -144,9 +231,9 @@
 		return new Promise((resolve) => setTimeout(() => resolve(), 30));
 	}
 
-	let uploading = false;
-	let pending = false;
-	async function handle_change(e: CustomEvent<Blob | any>): Promise<void> {
+	let uploading = $state(false);
+	let pending = $state(false);
+	async function handle_change(): Promise<void> {
 		if (!realtime) return;
 		if (uploading) {
 			pending = true;
@@ -189,19 +276,23 @@
 			})
 		);
 		image_id = id;
-		dispatch("change");
+		onchange?.();
 		await nextframe();
 		uploading = false;
 		if (pending) {
 			pending = false;
 			uploading = false;
-			handle_change(e);
+			handle_change();
 		}
 	}
 
-	$: [heading, paragraph] = placeholder ? inject(placeholder) : [false, false];
+	let placeholder_parts = $derived(
+		placeholder ? inject(placeholder) : [false, false]
+	);
+	let heading = $derived(placeholder_parts[0]);
+	let paragraph = $derived(placeholder_parts[1]);
 
-	let current_tool: ToolbarTool;
+	let current_tool = $state<ToolbarTool>("image");
 </script>
 
 <BlockLabel
@@ -214,15 +305,14 @@
 	{composite}
 	{layers}
 	{background}
-	on:history
 	{canvas_size}
 	bind:this={editor}
 	{changeable}
-	on:save
-	on:input
-	on:change={handle_change}
-	on:clear={() => dispatch("clear")}
-	on:download_error
+	{onsave}
+	{oninput}
+	onchange={handle_change}
+	onclear={() => onclear?.()}
+	{ondownload_error}
 	{sources}
 	bind:background_image
 	bind:current_tool
@@ -240,6 +330,7 @@
 	{show_download_button}
 	{theme_mode}
 	bind:can_undo
+	bind:has_user_edits
 	bind:full_history
 >
 	{#if current_tool === "image" && !can_undo}
@@ -253,15 +344,15 @@
 						<p>{paragraph}</p>
 					{/if}
 				{:else}
-					<div>Upload an image</div>
+					<div>{i18n("image_editor.upload_image")}</div>
 				{/if}
 			{/if}
 
 			{#if sources && sources.length && brush && !placeholder}
-				<div class="or">or</div>
+				<div class="or">{i18n("common.or")}</div>
 			{/if}
 			{#if brush && !placeholder}
-				<div>select the draw tool to start</div>
+				<div>{i18n("image_editor.select_draw_tool")}</div>
 			{/if}
 		</div>
 	{/if}

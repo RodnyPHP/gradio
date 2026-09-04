@@ -88,21 +88,23 @@ client/js/dist/*
 client/js/test.js
 .config/test.py
 .svelte-kit
-
+.vitest-attachments
 
 # storybook
 storybook-static
 build-storybook.log
 js/storybook/theme.css
+*storybook.log
 
 # playwright
 .config/playwright/.cache
 
 *.local.*
-.claude/
+.claude/settings.local
 CLAUDE.md
 .sonda/
 
 # docs upload
 scripts/docs.json
 tmp_input
+.claude/scheduled_tasks.lock

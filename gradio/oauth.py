@@ -110,7 +110,12 @@ def _add_oauth_routes(app: fastapi.FastAPI) -> None:
             # losing the state. A workaround is to delete the cookie and redirect the user to the login page again.
             # See https://github.com/lepture/authlib/issues/622 for more details.
 
-            # Delete all keys that are related to the OAuth state, just in case
+            # SessionMiddleware cannot expire a cookie whose signature it could
+            # not decode, so remember that case before mutating the session.
+            stale_cookie = "session" in request.cookies and not request.session
+
+            # Delete only stale OAuth state. Other session data may still be valid
+            # when a callback comes from an older login attempt.
             for key in list(request.session.keys()):
                 if key.startswith("_state_huggingface"):
                     request.session.pop(key)
@@ -136,11 +141,18 @@ def _add_oauth_routes(app: fastapi.FastAPI) -> None:
                         "Gradio is not running in a Space (SPACE_HOST environment variable is not set)."
                         " Cannot redirect to non-iframe view."
                     ) from None
+                host = host.split(",")[0].strip()
                 host_url = "https://" + host.rstrip("/")
-                return RedirectResponse(host_url + login_uri)
+                response = RedirectResponse(host_url + login_uri)
+            else:
+                # Redirect the user to the login page again
+                response = RedirectResponse(login_uri)
 
-            # Redirect the user to the login page again
-            return RedirectResponse(login_uri)
+            if stale_cookie:
+                response.delete_cookie(
+                    "session", secure=True, httponly=True, samesite="none"
+                )
+            return response
 
         # OAuth login worked => store the user info in the session and redirect
         request.session["oauth_info"] = oauth_info
@@ -179,7 +191,12 @@ def _add_mocked_oauth_routes(app: fastapi.FastAPI) -> None:
     @app.get("/login/callback")
     async def oauth_redirect_callback(request: fastapi.Request) -> RedirectResponse:
         """Endpoint that handles the OAuth callback."""
-        request.session["oauth_info"] = mocked_oauth_info
+        # `mocked_oauth_info` is computed once at startup, so its `expires_at` would
+        # eventually be in the past and every login would be treated as expired.
+        request.session["oauth_info"] = {
+            **mocked_oauth_info,
+            "expires_at": int(time.time()) + 8 * 60 * 60,  # 8 hours
+        }
         return _redirect_to_target(request)
 
     @app.get("/logout")
@@ -197,6 +214,10 @@ def _generate_redirect_uri(request: fastapi.Request) -> str:
         # otherwise => keep query params
         target = "/?" + urllib.parse.urlencode(request.query_params)
 
+    callback_query_params = {"_target_url": target}
+    if "_nb_redirects" in request.query_params:
+        callback_query_params["_nb_redirects"] = request.query_params["_nb_redirects"]
+
     # On Spaces, the redirect URI must always be https://<space_host>/login/callback,
     # so if a custom domain is used, we need to replace it with the hf.space URL
     if space_host := os.getenv("SPACE_HOST"):
@@ -205,12 +226,12 @@ def _generate_redirect_uri(request: fastapi.Request) -> str:
             0
         ]  # When custom domain is used, SPACE_HOST is a comma-separated list
         print(f"SPACE_HOST after split: {space_host}")
-        redirect_uri = f"https://{space_host}/login/callback?{urllib.parse.urlencode({'_target_url': target})}"
+        redirect_uri = f"https://{space_host}/login/callback?{urllib.parse.urlencode(callback_query_params)}"
         print(f"Redirect URI: {redirect_uri}")
         return redirect_uri
 
     redirect_uri = request.url_for("oauth_redirect_callback").include_query_params(
-        _target_url=target
+        **callback_query_params
     )
     redirect_uri_as_str = str(redirect_uri)
     return redirect_uri_as_str
@@ -220,7 +241,46 @@ def _redirect_to_target(
     request: fastapi.Request, default_target: str = "/"
 ) -> RedirectResponse:
     target = request.query_params.get("_target_url", default_target)
-    return RedirectResponse(target)
+    # Prevent open redirect by stripping scheme/host and only using the path.
+    parsed = urllib.parse.urlparse(target)
+    # Collapse any leading slashes/backslashes so the result is always a
+    # single-slash local path. urlparse leaves 4+ leading slashes in `.path`
+    # (e.g. "////evil.com" -> "//evil.com"), which browsers resolve as a
+    # scheme-relative URL to an external host — restoring the CVE-2026-28415
+    # open redirect (GHSA-vwgg-rgg9-xx9q).
+    safe_target = "/" + (parsed.path or "").lstrip("/\\")
+    if parsed.query:
+        safe_target += "?" + parsed.query
+    if parsed.fragment:
+        safe_target += "#" + parsed.fragment
+    return RedirectResponse(safe_target)
+
+
+def _get_valid_oauth_info_from_session(
+    session: typing.MutableMapping[str, typing.Any],
+) -> dict[str, typing.Any] | None:
+    oauth_info = session.get("oauth_info")
+    if oauth_info is None:
+        return None
+
+    expires_at = oauth_info.get("expires_at")
+    if expires_at is not None and expires_at < time.time():
+        session.pop("oauth_info", None)
+        return None
+
+    return oauth_info
+
+
+def require_oauth_token(request: fastapi.Request) -> str:
+    """FastAPI dependency: return the caller's HF OAuth access token or 401."""
+    try:
+        info = _get_valid_oauth_info_from_session(request.session)
+    except Exception:
+        info = None
+    token = info.get("access_token") if info else None
+    if not token:
+        raise fastapi.HTTPException(401, "oauth session required")
+    return token
 
 
 @dataclass
@@ -323,7 +383,7 @@ def _get_mocked_oauth_info() -> typing.Dict:
         )
 
     return {
-        "access_token": token,
+        "access_token": "mock-oauth-token-for-local-dev",
         "token_type": "bearer",
         "expires_in": 3600,
         "id_token": "AAAAAAAAAAAAAAAAAAAAAAAAAA",

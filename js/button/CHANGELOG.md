@@ -1,5 +1,140 @@
 # @gradio/button
 
+## 0.8.2
+
+### Dependency updates
+
+- @gradio/client@2.5.1
+
+## 0.8.2
+
+### Dependency updates
+
+- @gradio/client@2.5.0
+
+## 0.8.2
+
+### Dependency updates
+
+- @gradio/client@2.4.0
+- @gradio/utils@0.14.0
+- @gradio/upload@0.18.2
+- @gradio/image@0.28.1
+
+## 0.8.1
+
+### Dependency updates
+
+- @gradio/image@0.28.0
+- @gradio/client@2.3.1
+- @gradio/upload@0.18.1
+
+## 0.8.0
+
+### Features
+
+- [#13526](https://github.com/gradio-app/gradio/pull/13526) [`53cb4ca`](https://github.com/gradio-app/gradio/commit/53cb4cae1ec3521e9170d12867253516413ba37a) - Run `pnpm lint` and `pnpm ts:check` on CI.  Thanks @abidlabs!
+
+### Dependency updates
+
+- @gradio/utils@0.13.0
+- @gradio/client@2.3.0
+- @gradio/upload@0.18.0
+- @gradio/image@0.27.0
+
+## 0.7.0
+
+### Features
+
+- [#13502](https://github.com/gradio-app/gradio/pull/13502) [`429faeb`](https://github.com/gradio-app/gradio/commit/429faeb643fb1afc1722c0f63fafa11603f2c87f) - Ensure every component dispatches a `change` event when its value changes.  Thanks @abidlabs!
+
+### Dependency updates
+
+- @gradio/client@2.2.2
+
+## 0.6.6
+
+### Dependency updates
+
+- @gradio/client@2.2.1
+- @gradio/upload@0.17.10
+
+## 0.6.6
+
+### Dependency updates
+
+- @gradio/upload@0.17.9
+- @gradio/image@0.26.3
+
+## 0.6.6
+
+### Dependency updates
+
+- @gradio/client@2.2.0
+- @gradio/image@0.26.2
+
+## 0.6.6
+
+### Dependency updates
+
+- @gradio/utils@0.12.2
+- @gradio/upload@0.17.8
+- @gradio/image@0.26.1
+
+## 0.6.6
+
+### Dependency updates
+
+- @gradio/utils@0.12.1
+- @gradio/image@0.26.0
+
+## 0.6.5
+
+### Dependency updates
+
+- @gradio/utils@0.12.0
+- @gradio/upload@0.17.7
+- @gradio/image@0.25.4
+
+## 0.6.4
+
+### Fixes
+
+- [#12911](https://github.com/gradio-app/gradio/pull/12911) [`dcfc429`](https://github.com/gradio-app/gradio/commit/dcfc429a8125204c3aafeabcab251dd7580f9a60) - Fix Button component ignoring the `scale` parameter.  Thanks @hztBUAA!
+
+### Dependency updates
+
+- @gradio/client@2.1.0
+
+## 0.6.3
+
+### Dependency updates
+
+- @gradio/utils@0.11.3
+- @gradio/upload@0.17.6
+- @gradio/image@0.25.3
+
+## 0.6.3
+
+### Dependency updates
+
+- @gradio/client@2.0.4
+- @gradio/image@0.25.2
+- @gradio/upload@0.17.5
+
+## 0.6.3
+
+### Fixes
+
+- [#12800](https://github.com/gradio-app/gradio/pull/12800) [`7a1c321`](https://github.com/gradio-app/gradio/commit/7a1c321b6546ba05a353488f5133e8262c4a8a39) - Bump svelte/kit for security reasons.  Thanks @freddyaboulton!
+
+### Dependency updates
+
+- @gradio/utils@0.11.2
+- @gradio/upload@0.17.4
+- @gradio/client@2.0.3
+- @gradio/image@0.25.1
+
 ## 0.6.2
 
 ### Fixes

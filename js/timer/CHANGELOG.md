@@ -1,5 +1,57 @@
 # @gradio/timer
 
+## 0.5.2
+
+### Dependency updates
+
+- @gradio/utils@0.14.0
+
+## 0.5.1
+
+### Dependency updates
+
+- @gradio/utils@0.13.0
+
+## 0.5.0
+
+### Features
+
+- [#13502](https://github.com/gradio-app/gradio/pull/13502) [`429faeb`](https://github.com/gradio-app/gradio/commit/429faeb643fb1afc1722c0f63fafa11603f2c87f) - Ensure every component dispatches a `change` event when its value changes.  Thanks @abidlabs!
+
+## 0.4.9
+
+### Dependency updates
+
+- @gradio/utils@0.12.2
+
+## 0.4.9
+
+### Dependency updates
+
+- @gradio/utils@0.12.1
+
+## 0.4.9
+
+### Dependency updates
+
+- @gradio/utils@0.12.0
+
+## 0.4.8
+
+### Dependency updates
+
+- @gradio/utils@0.11.3
+
+## 0.4.8
+
+### Fixes
+
+- [#12800](https://github.com/gradio-app/gradio/pull/12800) [`7a1c321`](https://github.com/gradio-app/gradio/commit/7a1c321b6546ba05a353488f5133e8262c4a8a39) - Bump svelte/kit for security reasons.  Thanks @freddyaboulton!
+
+### Dependency updates
+
+- @gradio/utils@0.11.2
+
 ## 0.4.7
 
 ### Dependency updates

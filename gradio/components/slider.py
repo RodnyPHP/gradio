@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import math
 import random
 from collections.abc import Callable, Sequence
@@ -14,6 +13,7 @@ from gradio.components.base import Component, FormComponent
 from gradio.components.number import Number
 from gradio.events import Events
 from gradio.i18n import I18nData
+from gradio.utils import parse_escaped_json
 
 if TYPE_CHECKING:
     from gradio.components import Timer
@@ -25,7 +25,6 @@ class Slider(FormComponent):
     Creates a slider that ranges from {minimum} to {maximum} with a step size of {step}.
 
     Demos: sentence_builder, slider_release, interface_random_slider, blocks_random_slider
-    Guides: create-your-own-friends-with-a-gan
     """
 
     EVENTS = [Events.change, Events.input, Events.release]
@@ -65,7 +64,7 @@ class Slider(FormComponent):
             precision: Precision to round input/output to. If set to 0, will round to nearest integer and convert type to int. If None, no rounding happens.
             label: the label for this component, displayed above the component if `show_label` is `True` and is also used as the header if there are a table of examples for this component. If None and used in a `gr.Interface`, the label will be the name of the parameter this component corresponds to.
             info: additional component description, appears below the label in smaller font. Supports markdown / HTML syntax.
-            every: Continously calls `value` to recalculate it if `value` is a function (has no effect otherwise). Can provide a Timer whose tick resets `value`, or a float that provides the regular interval for the reset Timer.
+            every: Continuously calls `value` to recalculate it if `value` is a function (has no effect otherwise). Can provide a Timer whose tick resets `value`, or a float that provides the regular interval for the reset Timer.
             inputs: Components that are used as inputs to calculate `value` if `value` is a function (has no effect otherwise). `value` is recalculated any time the inputs change.
             show_label: if True, will display label.
             container: If True, will place the component in a container - providing some extra padding around the border.
@@ -81,6 +80,9 @@ class Slider(FormComponent):
             randomize: If True, the value of the slider when the app loads is taken uniformly at random from the range given by the minimum and maximum.
             buttons: A list of buttons to show for the component. Currently, the only valid option is "reset". The "reset" button allows the user to reset the slider to its default value. By default, no buttons are shown.
         """
+        if minimum >= maximum:
+            raise ValueError("Slider minimum must be less than maximum.")
+
         self.minimum = minimum
         self.maximum = maximum
         self.precision = precision
@@ -157,4 +159,4 @@ class Slider(FormComponent):
 
     def read_from_flag(self, payload: Any):
         """Sliders are stored as strings in the flagging file, so we need to parse them as json."""
-        return json.loads(payload)
+        return parse_escaped_json(payload)

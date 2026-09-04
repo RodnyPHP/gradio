@@ -1,24 +1,56 @@
-<script>
-	import { Meta, Template, Story } from "@storybook/addon-svelte-csf";
+<script module>
+	import { defineMeta } from "@storybook/addon-svelte-csf";
 	import Checkboxgroup from "./Index.svelte";
+	import { allModes } from "../storybook/modes";
+	import { wrapProps } from "../storybook/wrapProps";
+
+	const { Story } = defineMeta({
+		title: "Components/CheckboxGroup",
+		component: Checkboxgroup,
+		parameters: {
+			chromatic: {
+				modes: {
+					desktop: allModes["desktop"],
+					mobile: allModes["mobile"]
+				}
+			}
+		},
+		argTypes: {
+			label: {
+				control: "text",
+				description: "The checkbox group label",
+				name: "label"
+			},
+			info: {
+				control: "text",
+				description: "Additional info text",
+				name: "info"
+			},
+			show_label: {
+				options: [true, false],
+				description: "Whether to show the label",
+				control: { type: "boolean" },
+				defaultValue: true
+			},
+			interactive: {
+				options: [true, false],
+				description: "Whether the checkbox group is interactive",
+				control: { type: "boolean" },
+				defaultValue: true
+			},
+			show_select_all: {
+				options: [true, false],
+				description: "Whether to show select all option",
+				control: { type: "boolean" },
+				defaultValue: false
+			}
+		}
+	});
 </script>
 
-<Meta
-	title="Components/CheckboxGroup"
-	component={Checkboxgroup}
-	argTypes={{
-		disabled: {
-			control: [true, false],
-			description: "Whether the CheckboxGroup is disabled",
-			name: "interactive",
-			value: false
-		}
-	}}
-/>
-
-<Template let:args>
-	<Checkboxgroup {...args} />
-</Template>
+{#snippet template(args)}
+	<Checkboxgroup {...wrapProps(args)} />
+{/snippet}
 
 <Story
 	name="Basic Checkbox Group"
@@ -33,8 +65,8 @@
 		interactive: true,
 		show_label: true
 	}}
+	{template}
 />
-
 <Story
 	name="CheckboxGroup with info"
 	args={{
@@ -50,8 +82,8 @@
 		interactive: true,
 		show_label: true
 	}}
+	{template}
 />
-
 <Story
 	name="CheckboxGroup with select all"
 	args={{
@@ -69,23 +101,8 @@
 		show_label: true,
 		show_select_all: true
 	}}
+	{template}
 />
-
-<Story
-	name="CheckboxGroup without label"
-	args={{
-		value: ["swim", "run"],
-		choices: [
-			["Run", "run"],
-			["Swim", "swim"],
-			["Jump", "jump"]
-		],
-		label: "Select your activities",
-		interactive: true,
-		show_label: false
-	}}
-/>
-
 <Story
 	name="CheckboxGroup disabled"
 	args={{
@@ -99,8 +116,8 @@
 		interactive: false,
 		show_label: true
 	}}
+	{template}
 />
-
 <Story
 	name="CheckboxGroup with many options"
 	args={{
@@ -120,21 +137,5 @@
 		interactive: true,
 		show_label: true
 	}}
-/>
-
-<Story
-	name="CheckboxGroup with different display and internal values"
-	args={{
-		value: ["jump", "jump_again"],
-		choices: [
-			["Running (Cardio)", "run"],
-			["Swimming (Full Body)", "swim"],
-			["Jumping (Beginner)", "jump"],
-			["Jumping (Advanced)", "jump_again"]
-		],
-		label: "Exercise Selection",
-		info: "Internal values differ from display text",
-		interactive: true,
-		show_label: true
-	}}
+	{template}
 />

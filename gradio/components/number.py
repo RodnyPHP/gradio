@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -13,7 +12,7 @@ from gradio.components.button import Button
 from gradio.events import Events
 from gradio.exceptions import Error
 from gradio.i18n import I18nData
-from gradio.utils import set_default_buttons
+from gradio.utils import parse_escaped_json, set_default_buttons
 
 if TYPE_CHECKING:
     from gradio.components import Timer
@@ -61,7 +60,7 @@ class Number(FormComponent):
             label: the label for this component, displayed above the component if `show_label` is `True` and is also used as the header if there are a table of examples for this component. If None and used in a `gr.Interface`, the label will be the name of the parameter this component corresponds to.
             placeholder: placeholder hint to provide behind number input.
             info: additional component description, appears below the label in smaller font. Supports markdown / HTML syntax.
-            every: Continously calls `value` to recalculate it if `value` is a function (has no effect otherwise). Can provide a Timer whose tick resets `value`, or a float that provides the regular interval for the reset Timer.
+            every: Continuously calls `value` to recalculate it if `value` is a function (has no effect otherwise). Can provide a Timer whose tick resets `value`, or a float that provides the regular interval for the reset Timer.
             inputs: Components that are used as inputs to calculate `value` if `value` is a function (has no effect otherwise). `value` is recalculated any time the inputs change.
             show_label: if True, will display label.
             container: If True, will place the component in a container - providing some extra padding around the border.
@@ -175,4 +174,4 @@ class Number(FormComponent):
 
     def read_from_flag(self, payload: str):
         """Numbers are stored as strings in the flagging file, so we need to parse them as json."""
-        return json.loads(payload)
+        return parse_escaped_json(payload)

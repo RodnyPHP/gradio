@@ -74,6 +74,7 @@ demo = gr.Interface(
     fn=greet,
     inputs=["text", "slider"],
     outputs=["text"],
+    api_name="predict"
 )
 
 demo.launch()
@@ -162,6 +163,7 @@ That's the gist of the core `gradio` Python library, but Gradio is actually so m
 * [Gradio Python Client](https://www.gradio.app/guides/getting-started-with-the-python-client) (`gradio_client`): query any Gradio app programmatically in Python.
 * [Gradio JavaScript Client](https://www.gradio.app/guides/getting-started-with-the-js-client) (`@gradio/client`): query any Gradio app programmatically in JavaScript.
 * [Hugging Face Spaces](https://huggingface.co/spaces): the most popular place to host Gradio applications — for free!
+* [Server mode](https://www.gradio.app/guides/server-mode) (`gradio.Server`): build a custom frontend with Gradio's backend — queue, streaming, MCP, ZeroGPU, and Spaces hosting included.
 
 ### What's Next?
 
@@ -170,9 +172,21 @@ Keep learning about Gradio sequentially using the Gradio Guides, which include e
 Or, if you already know the basics and are looking for something specific, you can search the more [technical API documentation](https://www.gradio.app/docs/).
 
 
-### Gradio Sketch
+### AI Coding Skills
 
-You can also build Gradio applications without writing any code. Simply type `gradio sketch` into your terminal to open up an editor that lets you define and modify Gradio components, adjust their layouts, add events, all through a web editor. Or [use this hosted version of Gradio Sketch, running on Hugging Face Spaces](https://huggingface.co/spaces/aliabid94/Sketch).
+Gradio provides a "skill" that enriches AI coding assistants (like Cursor, Claude Code, Codex, etc.) with Gradio-specific knowledge, so that they can build Gradio apps more effectively. This is especially useful when creating custom Gradio components or styling. Install the Gradio skill for coding assistants with a single command:
+
+```bash
+gradio skills add
+```
+
+This installs to the shared `.agents/skills` directory used by Codex, Cursor, OpenCode, and other compatible agents. Use `--global` to install at the user level (applies to all projects), or an agent flag such as `--claude` to also create a link in that agent's skills directory.
+
+You can also install a skill for a **specific Gradio Space**, which generates API usage docs (Python, JS, cURL) on the fly:
+
+```bash
+gradio skills add abidlabs/en2fr
+```
 
 ## Questions?
 

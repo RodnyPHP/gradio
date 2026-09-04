@@ -1,5 +1,114 @@
 # @gradio/downloadbutton
 
+## 0.5.2
+
+### Dependency updates
+
+- @gradio/client@2.5.1
+
+## 0.5.2
+
+### Dependency updates
+
+- @gradio/client@2.5.0
+
+## 0.5.2
+
+### Dependency updates
+
+- @gradio/client@2.4.0
+- @gradio/utils@0.14.0
+- @gradio/button@0.8.2
+
+## 0.5.1
+
+### Dependency updates
+
+- @gradio/button@0.8.1
+- @gradio/client@2.3.1
+
+## 0.5.1
+
+### Dependency updates
+
+- @gradio/utils@0.13.0
+- @gradio/client@2.3.0
+- @gradio/button@0.8.0
+
+## 0.5.0
+
+### Features
+
+- [#13502](https://github.com/gradio-app/gradio/pull/13502) [`429faeb`](https://github.com/gradio-app/gradio/commit/429faeb643fb1afc1722c0f63fafa11603f2c87f) - Ensure every component dispatches a `change` event when its value changes.  Thanks @abidlabs!
+
+### Dependency updates
+
+- @gradio/client@2.2.2
+- @gradio/button@0.7.0
+
+## 0.4.18
+
+### Dependency updates
+
+- @gradio/client@2.2.1
+
+## 0.4.18
+
+### Dependency updates
+
+- @gradio/client@2.2.0
+
+## 0.4.18
+
+### Dependency updates
+
+- @gradio/utils@0.12.2
+
+## 0.4.18
+
+### Dependency updates
+
+- @gradio/utils@0.12.1
+- @gradio/button@0.6.6
+
+## 0.4.18
+
+### Dependency updates
+
+- @gradio/button@0.6.5
+- @gradio/utils@0.12.0
+
+## 0.4.17
+
+### Dependency updates
+
+- @gradio/client@2.1.0
+- @gradio/button@0.6.4
+
+## 0.4.17
+
+### Dependency updates
+
+- @gradio/utils@0.11.3
+
+## 0.4.17
+
+### Dependency updates
+
+- @gradio/client@2.0.4
+
+## 0.4.17
+
+### Fixes
+
+- [#12800](https://github.com/gradio-app/gradio/pull/12800) [`7a1c321`](https://github.com/gradio-app/gradio/commit/7a1c321b6546ba05a353488f5133e8262c4a8a39) - Bump svelte/kit for security reasons.  Thanks @freddyaboulton!
+
+### Dependency updates
+
+- @gradio/button@0.6.3
+- @gradio/utils@0.11.2
+- @gradio/client@2.0.3
+
 ## 0.4.16
 
 ### Fixes

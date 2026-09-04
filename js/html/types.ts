@@ -10,6 +10,7 @@ export interface HTMLProps {
 	min_height: number | undefined;
 	max_height: number | undefined;
 	props: Record<string, any>;
+	head: string | null;
 	component_class_name: string;
 	buttons: (string | CustomButton)[] | null;
 }
@@ -19,4 +20,6 @@ export interface HTMLEvents {
 	click: never;
 	submit: never;
 	custom_button_click: { id: number };
+	error: string;
+	clear_status: any;
 }

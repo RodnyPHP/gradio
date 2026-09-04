@@ -1,5 +1,193 @@
 # @gradio/multimodaltextbox
 
+## 0.14.1
+
+### Dependency updates
+
+- @gradio/client@2.5.1
+
+## 0.14.1
+
+### Dependency updates
+
+- @gradio/client@2.5.0
+
+## 0.14.1
+
+### Dependency updates
+
+- @gradio/client@2.4.0
+- @gradio/utils@0.14.0
+- @gradio/atoms@0.26.1
+- @gradio/statustracker@0.15.2
+- @gradio/upload@0.18.2
+- @gradio/image@0.28.1
+- @gradio/video@0.23.0
+- @gradio/audio@0.24.2
+
+## 0.14.0
+
+### Features
+
+- [#13543](https://github.com/gradio-app/gradio/pull/13543) [`0533483`](https://github.com/gradio-app/gradio/commit/0533483bccdee38f334a598f18297e8c02966343) - Migrate Image components to Svelte 5.  Thanks @dawoodkhan82!
+
+### Dependency updates
+
+- @gradio/statustracker@0.15.1
+- @gradio/icons@0.16.0
+- @gradio/atoms@0.26.0
+- @gradio/image@0.28.0
+- @gradio/video@0.22.0
+- @gradio/client@2.3.1
+- @gradio/upload@0.18.1
+- @gradio/audio@0.24.1
+
+## 0.13.0
+
+### Features
+
+- [#13526](https://github.com/gradio-app/gradio/pull/13526) [`53cb4ca`](https://github.com/gradio-app/gradio/commit/53cb4cae1ec3521e9170d12867253516413ba37a) - Run `pnpm lint` and `pnpm ts:check` on CI.  Thanks @abidlabs!
+
+### Dependency updates
+
+- @gradio/atoms@0.25.0
+- @gradio/statustracker@0.15.0
+- @gradio/utils@0.13.0
+- @gradio/client@2.3.0
+- @gradio/upload@0.18.0
+- @gradio/image@0.27.0
+- @gradio/video@0.21.0
+- @gradio/audio@0.24.0
+
+## 0.12.0
+
+### Features
+
+- [#13509](https://github.com/gradio-app/gradio/pull/13509) [`dcd072c`](https://github.com/gradio-app/gradio/commit/dcd072cd57f09ffd2dc5f97ae6afc505894824a6) - Migrate Chatbot, Tabs, TabItem to Svelte 5.  Thanks @dawoodkhan82!
+
+### Dependency updates
+
+- @gradio/client@2.2.2
+- @gradio/audio@0.23.4
+
+## 0.11.11
+
+### Dependency updates
+
+- @gradio/client@2.2.1
+- @gradio/upload@0.17.10
+
+## 0.11.11
+
+### Dependency updates
+
+- @gradio/atoms@0.24.0
+- @gradio/statustracker@0.14.1
+- @gradio/upload@0.17.9
+- @gradio/image@0.26.3
+- @gradio/video@0.20.8
+- @gradio/audio@0.23.3
+
+## 0.11.10
+
+### Dependency updates
+
+- @gradio/atoms@0.23.1
+- @gradio/statustracker@0.14.0
+- @gradio/client@2.2.0
+- @gradio/image@0.26.2
+- @gradio/video@0.20.7
+- @gradio/audio@0.23.2
+
+## 0.11.9
+
+### Dependency updates
+
+- @gradio/utils@0.12.2
+- @gradio/atoms@0.23.0
+- @gradio/statustracker@0.13.1
+- @gradio/upload@0.17.8
+- @gradio/image@0.26.1
+- @gradio/video@0.20.6
+- @gradio/audio@0.23.1
+
+## 0.11.8
+
+### Dependency updates
+
+- @gradio/utils@0.12.1
+- @gradio/statustracker@0.13.0
+- @gradio/image@0.26.0
+- @gradio/video@0.20.5
+- @gradio/audio@0.23.0
+
+## 0.11.7
+
+### Dependency updates
+
+- @gradio/statustracker@0.12.5
+- @gradio/utils@0.12.0
+- @gradio/atoms@0.22.2
+- @gradio/upload@0.17.7
+- @gradio/image@0.25.4
+- @gradio/video@0.20.4
+- @gradio/audio@0.22.4
+
+## 0.11.6
+
+### Dependency updates
+
+- @gradio/client@2.1.0
+
+## 0.11.6
+
+### Dependency updates
+
+- @gradio/utils@0.11.3
+- @gradio/atoms@0.22.0
+- @gradio/statustracker@0.12.4
+- @gradio/upload@0.17.6
+- @gradio/video@0.20.3
+- @gradio/image@0.25.3
+- @gradio/audio@0.22.3
+
+## 0.11.5
+
+### Fixes
+
+- [#12789](https://github.com/gradio-app/gradio/pull/12789) [`af5e86f`](https://github.com/gradio-app/gradio/commit/af5e86f10d95cc71ee4cb950e455dbdc8e138983) - Migrate gr.MultimodalTextbox.  Thanks @hannahblair!
+
+### Dependency updates
+
+- @gradio/atoms@0.21.0
+- @gradio/client@2.0.4
+- @gradio/statustracker@0.12.3
+- @gradio/image@0.25.2
+- @gradio/upload@0.17.5
+- @gradio/video@0.20.2
+- @gradio/audio@0.22.2
+
+## 0.11.4
+
+### Fixes
+
+- [#12800](https://github.com/gradio-app/gradio/pull/12800) [`7a1c321`](https://github.com/gradio-app/gradio/commit/7a1c321b6546ba05a353488f5133e8262c4a8a39) - Bump svelte/kit for security reasons.  Thanks @freddyaboulton!
+- [#12779](https://github.com/gradio-app/gradio/pull/12779) [`ea2d3e9`](https://github.com/gradio-app/gradio/commit/ea2d3e985a8b42d188e551f517c5825c00790628) - Migrate Audio + Upload + Atoms to Svelte 5.  Thanks @dawoodkhan82!
+- [#12795](https://github.com/gradio-app/gradio/pull/12795) [`184968a`](https://github.com/gradio-app/gradio/commit/184968aa13636b5afe78f8ae443cd7fc29635bfa) - Add fade effect to overflowing text.  Thanks @hannahblair!
+- [#12594](https://github.com/gradio-app/gradio/pull/12594) [`c2f0f19`](https://github.com/gradio-app/gradio/commit/c2f0f1949d453bc850fa65e5b140067008a83e22) - add conditional rendering for the upload button in multimodal textbox.  Thanks @hannahblair!
+
+### Dependency updates
+
+- @gradio/statustracker@0.12.2
+- @gradio/atoms@0.20.1
+- @gradio/utils@0.11.2
+- @gradio/icons@0.15.1
+- @gradio/upload@0.17.4
+- @gradio/client@2.0.3
+- @gradio/image@0.25.1
+- @gradio/video@0.20.1
+- @gradio/audio@0.22.1
+
 ## 0.11.3
 
 ### Fixes

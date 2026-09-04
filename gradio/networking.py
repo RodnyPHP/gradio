@@ -12,6 +12,7 @@ from pathlib import Path
 
 import httpx
 
+from gradio.exceptions import ShareCertificateWriteError
 from gradio.routes import App  # HACK: to avoid circular import # noqa: F401
 from gradio.tunneling import CERTIFICATE_PATH, Tunnel
 
@@ -37,14 +38,20 @@ def setup_tunnel(
             payload = response.json()[0]
             remote_host, remote_port = payload["host"], int(payload["port"])
             certificate = payload["root_ca"]
-            Path(CERTIFICATE_PATH).parent.mkdir(parents=True, exist_ok=True)
-            with open(CERTIFICATE_PATH, "w") as f:
-                f.write(certificate)
-            share_server_tls_certificate = CERTIFICATE_PATH
         except Exception as e:
             raise RuntimeError(
                 "Could not get share link from Gradio API Server."
             ) from e
+        try:
+            Path(CERTIFICATE_PATH).parent.mkdir(parents=True, exist_ok=True)
+            with open(CERTIFICATE_PATH, "w") as f:
+                f.write(certificate)
+        except Exception as e:
+            raise ShareCertificateWriteError(
+                f"{e}. This can happen when the current working directory is read-only."
+            ) from e
+        share_server_tls_certificate = CERTIFICATE_PATH
+
     else:
         remote_host, remote_port = share_server_address.split(":")
         remote_port = int(remote_port)
@@ -67,8 +74,8 @@ def url_ok(url: str) -> bool:
                 warnings.filterwarnings("ignore")
                 r = httpx.head(url, timeout=3, verify=False)
             if (
-                r.status_code in (200, 401, 302, 303, 307)
-            ):  # 401 or 302 if auth is set; 303 or 307 are alternatives to 302 for temporary redirects
+                r.status_code in (200, 401, 301, 302, 303, 307, 308)
+            ):  # 401 or 302 if auth is set; 303 or 307 are alternatives to 302 for temporary redirects; 301 and 308 are permanent redirects
                 return True
             time.sleep(0.500)
     except (ConnectionError, httpx.ConnectError, httpx.TimeoutException):

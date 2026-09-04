@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { createEventDispatcher, onMount } from "svelte";
 	import type { SelectData } from "@gradio/utils";
 	import { uploadToHuggingFace } from "@gradio/utils";
 	import {
@@ -19,27 +18,46 @@
 	import type { I18nFormatter } from "@gradio/utils";
 	import type { FileData } from "@gradio/client";
 
-	export let value: null | FileData;
-	export let label: string | undefined = undefined;
-	export let show_label: boolean;
-	export let buttons: (string | CustomButtonType)[] = [];
-	export let on_custom_button_click: ((id: number) => void) | null = null;
-	export let selectable = false;
-	export let i18n: I18nFormatter;
-	export let display_icon_button_wrapper_top_corner = false;
-	export let fullscreen = false;
-	export let show_button_background = true;
-
-	const dispatch = createEventDispatcher<{
-		change: string;
-		select: SelectData;
-		fullscreen: boolean;
-	}>();
+	let {
+		value,
+		alt_text = null,
+		label = undefined,
+		show_label,
+		buttons = [],
+		on_custom_button_click = null,
+		selectable = false,
+		i18n,
+		display_icon_button_wrapper_top_corner = false,
+		fullscreen = $bindable(false),
+		show_button_background = true,
+		onselect,
+		onfullscreen,
+		onshare,
+		onerror,
+		onload
+	}: {
+		value: null | FileData;
+		alt_text?: string | null;
+		label?: string;
+		show_label: boolean;
+		buttons?: (string | CustomButtonType)[];
+		on_custom_button_click?: ((id: number) => void) | null;
+		selectable?: boolean;
+		i18n: I18nFormatter;
+		display_icon_button_wrapper_top_corner?: boolean;
+		fullscreen?: boolean;
+		show_button_background?: boolean;
+		onselect?: (value: SelectData) => void;
+		onfullscreen?: (fullscreen: boolean) => void;
+		onshare?: (detail: unknown) => void;
+		onerror?: (error: string) => void;
+		onload?: () => void;
+	} = $props();
 
 	const handle_click = (evt: MouseEvent): void => {
 		let coordinates = get_coordinates_of_clicked_image(evt);
 		if (coordinates) {
-			dispatch("select", { index: coordinates, value: null });
+			onselect?.({ index: coordinates, value: null });
 		}
 	};
 
@@ -62,7 +80,13 @@
 			{on_custom_button_click}
 		>
 			{#if buttons.some((btn) => typeof btn === "string" && btn === "fullscreen")}
-				<FullscreenButton {fullscreen} on:fullscreen />
+				<FullscreenButton
+					{fullscreen}
+					onclick={(is_fullscreen) => {
+						fullscreen = is_fullscreen;
+						onfullscreen?.(is_fullscreen);
+					}}
+				/>
 			{/if}
 			{#if buttons.some((btn) => typeof btn === "string" && btn === "download")}
 				<DownloadLink href={value.url} download={value.orig_name || "image"}>
@@ -72,8 +96,8 @@
 			{#if buttons.some((btn) => typeof btn === "string" && btn === "share")}
 				<ShareButton
 					{i18n}
-					on:share
-					on:error
+					onshare={(detail) => onshare?.(detail)}
+					onerror={(detail) => onerror?.(detail)}
 					formatter={async (value) => {
 						if (!value) return "";
 						let url = await uploadToHuggingFace(value, "url");
@@ -83,12 +107,12 @@
 				/>
 			{/if}
 		</IconButtonWrapper>
-		<button on:click={handle_click}>
+		<button onclick={handle_click}>
 			<div class:selectable class="image-frame">
 				<Image
 					src={value.url}
-					restProps={{ loading: "lazy", alt: "" }}
-					on:load
+					restProps={{ loading: "lazy", alt: alt_text ?? "" }}
+					{onload}
 				/>
 			</div>
 		</button>

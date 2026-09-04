@@ -13,34 +13,61 @@
 	import { all_text, is_all_text } from "./utils";
 	import type { I18nFormatter } from "js/core/src/gradio_helper";
 	import { uploadToHuggingFace } from "@gradio/utils";
+	import type { CopyData } from "@gradio/utils";
 
-	export let i18n: I18nFormatter;
-	export let likeable: boolean;
-	export let feedback_options: string[];
-	export let show_retry: boolean;
-	export let show_undo: boolean;
-	export let show_edit: boolean;
-	export let in_edit_mode: boolean;
-	export let show_copy_button: boolean;
-	export let watermark: string | null = null;
-	export let message: NormalisedMessage | NormalisedMessage[];
-	export let position: "right" | "left";
-	export let avatar: FileData | null;
-	export let generating: boolean;
-	export let current_feedback: string | null;
-	export let file: FileData | null = null;
-	export let show_download_button = false;
-	export let show_share_button = false;
+	let {
+		i18n,
+		likeable,
+		feedback_options,
+		show_retry,
+		show_undo,
+		show_edit,
+		in_edit_mode,
+		show_copy_button,
+		watermark = null,
+		message,
+		position,
+		avatar,
+		generating,
+		current_feedback,
+		file = null,
+		show_download_button = false,
+		show_share_button = false,
+		handle_action,
+		layout,
+		oncopy,
+		onerror,
+		onshare
+	}: {
+		i18n: I18nFormatter;
+		likeable: boolean;
+		feedback_options: string[];
+		show_retry: boolean;
+		show_undo: boolean;
+		show_edit: boolean;
+		in_edit_mode: boolean;
+		show_copy_button: boolean;
+		watermark?: string | null;
+		message: NormalisedMessage | NormalisedMessage[];
+		position: "right" | "left";
+		avatar: FileData | null;
+		generating: boolean;
+		current_feedback: string | null;
+		file?: FileData | null;
+		show_download_button?: boolean;
+		show_share_button?: boolean;
+		handle_action: (selected: string | null) => void;
+		layout: "bubble" | "panel";
+		oncopy?: (data: CopyData) => void;
+		onerror?: (message: string) => void;
+		onshare?: (data: any) => void;
+	} = $props();
 
-	export let handle_action: (selected: string | null) => void;
-	export let layout: "bubble" | "panel";
-	export let dispatch: any;
-
-	$: message_text = is_all_text(message) ? all_text(message) : "";
-	$: show_copy = show_copy_button && message && is_all_text(message);
+	let message_text = $derived(is_all_text(message) ? all_text(message) : "");
+	let show_copy = $derived(show_copy_button && message && is_all_text(message));
 </script>
 
-{#if show_copy || show_retry || show_undo || show_edit || likeable || show_download_button || show_share_button}
+{#if show_copy || show_retry || show_undo || show_edit || likeable || (show_download_button && file?.url) || (show_share_button && file)}
 	<div
 		class="message-buttons-{position} {layout} message-buttons {avatar !==
 			null && 'with-avatar'}"
@@ -50,23 +77,18 @@
 				<IconButton
 					label={i18n("chatbot.submit")}
 					Icon={Check}
-					on:click={() => handle_action("edit_submit")}
+					onclick={() => handle_action("edit_submit")}
 					disabled={generating}
 				/>
 				<IconButton
 					label={i18n("chatbot.cancel")}
 					Icon={Clear}
-					on:click={() => handle_action("edit_cancel")}
+					onclick={() => handle_action("edit_cancel")}
 					disabled={generating}
 				/>
 			{:else}
 				{#if show_copy}
-					<Copy
-						value={message_text}
-						on:copy={(e) => dispatch("copy", e.detail)}
-						{watermark}
-						{i18n}
-					/>
+					<Copy value={message_text} {oncopy} {watermark} {i18n} />
 				{/if}
 				{#if show_download_button && file?.url}
 					<DownloadLink
@@ -81,8 +103,8 @@
 				{#if show_share_button && file}
 					<ShareButton
 						{i18n}
-						on:error={(e) => dispatch("error", e.detail)}
-						on:share={(e) => dispatch("share", e.detail)}
+						onerror={(detail) => onerror?.(detail)}
+						onshare={(detail) => onshare?.(detail)}
 						formatter={async (value) => {
 							if (!value) return "";
 							let url = await uploadToHuggingFace(value.url, "url");
@@ -103,7 +125,7 @@
 					<IconButton
 						Icon={Retry}
 						label={i18n("chatbot.retry")}
-						on:click={() => handle_action("retry")}
+						onclick={() => handle_action("retry")}
 						disabled={generating}
 					/>
 				{/if}
@@ -111,7 +133,7 @@
 					<IconButton
 						label={i18n("chatbot.undo")}
 						Icon={Undo}
-						on:click={() => handle_action("undo")}
+						onclick={() => handle_action("undo")}
 						disabled={generating}
 					/>
 				{/if}
@@ -119,7 +141,7 @@
 					<IconButton
 						label={i18n("chatbot.edit")}
 						Icon={Edit}
-						on:click={() => handle_action("edit")}
+						onclick={() => handle_action("edit")}
 						disabled={generating}
 					/>
 				{/if}

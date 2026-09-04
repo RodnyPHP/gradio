@@ -9,11 +9,14 @@ import json
 import mimetypes
 import os
 import pkgutil
+import re
 import secrets
 import shutil
 import tempfile
 import time
+import urllib.parse
 import warnings
+from collections import deque
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -65,6 +68,28 @@ INVALID_RUNTIME = [
     SpaceStage.RUNTIME_ERROR,
     SpaceStage.PAUSED,
 ]
+
+# Characters forbidden in filenames across OS and shell environments:
+# < > : " / \ | ? *  – forbidden on Windows
+# \x00-\x1f           – null byte and ASCII control characters
+# \x7f                – DEL character
+# ` $ ! { }           – shell-dangerous characters
+_FORBIDDEN_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f\x7f`$!{}]')
+
+# Windows reserved device names (case-insensitive). Uploading e.g. CON.txt
+# fails on Windows hosts because these are not valid filesystem paths.
+_WINDOWS_RESERVED_NAMES = frozenset(
+    {
+        "CON",
+        "PRN",
+        "AUX",
+        "NUL",
+        "CONIN$",
+        "CONOUT$",
+        *(f"COM{c}" for c in "123456789\xb9\xb2\xb3"),
+        *(f"LPT{c}" for c in "123456789\xb9\xb2\xb3"),
+    }
+)
 
 
 class Message(TypedDict, total=False):
@@ -359,7 +384,8 @@ def get_pred_from_sse_v1plus(
     helper: Communicator,
     headers: dict[str, str],
     cookies: dict[str, str] | None,
-    pending_messages_per_event: dict[str, list[Message | None]],
+    pending_messages_per_event: dict[str, deque[Message | None]],
+    pending_lock: Lock,
     event_id: str,
     protocol: Literal["sse_v1", "sse_v2", "sse_v2.1"],
     ssl_verify: bool,
@@ -370,7 +396,12 @@ def get_pred_from_sse_v1plus(
         check_for_cancel, helper, headers, cookies, ssl_verify
     )
     future_sse = executor.submit(
-        stream_sse_v1plus, helper, pending_messages_per_event, event_id, protocol
+        stream_sse_v1plus,
+        helper,
+        pending_messages_per_event,
+        pending_lock,
+        event_id,
+        protocol,
     )
     done, _ = concurrent.futures.wait(
         [future_cancel, future_sse],  # type: ignore
@@ -483,7 +514,8 @@ def stream_sse_v0(
 
 def stream_sse_v1plus(
     helper: Communicator,
-    pending_messages_per_event: dict[str, list[Message | None]],
+    pending_messages_per_event: dict[str, deque[Message | None]],
+    pending_lock: Lock,
     event_id: str,
     protocol: Literal["sse_v1", "sse_v2", "sse_v2.1", "sse_v3"],
 ) -> dict[str, Any]:
@@ -493,7 +525,7 @@ def stream_sse_v1plus(
 
         while True:
             if len(pending_messages) > 0:
-                msg = pending_messages.pop(0)
+                msg = pending_messages.popleft()
             else:
                 time.sleep(0.05)
                 continue
@@ -530,6 +562,12 @@ def stream_sse_v1plus(
                         pending_responses_for_diffs = list(output)
                     else:
                         for i, value in enumerate(output):
+                            # A new output can appear mid-stream if the app was
+                            # hot-reloaded while a generator was running; its diff
+                            # is computed against None on the server, so treat any
+                            # index beyond what we've seen as starting from None.
+                            if i >= len(pending_responses_for_diffs):
+                                pending_responses_for_diffs.append(None)
                             prev_output = pending_responses_for_diffs[i]
                             new_output = apply_diff(prev_output, value)
                             pending_responses_for_diffs[i] = new_output
@@ -547,7 +585,8 @@ def stream_sse_v1plus(
                 helper.job.latest_status = status_update
                 helper.updates.put_nowait(status_update)
             if msg["msg"] == ServerMessage.process_completed:
-                del pending_messages_per_event[event_id]
+                with pending_lock:
+                    del pending_messages_per_event[event_id]
                 if not msg.get("success", True):
                     # Create a new copy of the error dict so we
                     # can preserve the error message (it gets popped later)
@@ -672,13 +711,13 @@ def get_extension(encoding: str) -> str | None:
 
 def is_valid_file(file_path: str, file_types: list[str]) -> bool:
     mime_type = get_mimetype(file_path)
+    file_name = Path(file_path).name.lower()
     for file_type in file_types:
         if file_type == "file":
             return True
         if file_type.startswith("."):
-            file_type = file_type.lstrip(".").lower()
-            file_ext = Path(file_path).suffix.lstrip(".").lower()
-            if file_type == file_ext:
+            file_type = file_type.lower()
+            if len(file_name) > len(file_type) and file_name.endswith(file_type):
                 return True
         elif mime_type is not None and mime_type.startswith(f"{file_type}/"):
             return True
@@ -734,22 +773,59 @@ def decode_base64_to_binary(encoding: str) -> tuple[bytes, str | None]:
 
 def strip_invalid_filename_characters(filename: str, max_bytes: int = 200) -> str:
     """
-    Strips invalid characters from a filename and ensures it does not exceed the maximum byte length
-    Invalid characters are any characters that are not alphanumeric or one of the following: . _ - ,
-    The filename may include an extension (in which case it is preserved exactly as is), or could be just a name without an extension.
+    Strips invalid characters from a filename and ensures it does not exceed the maximum byte length.
+    Only removes characters that are truly dangerous for file systems: path separators,
+    null bytes, control characters, and shell-dangerous characters. Preserves all other
+    characters including parentheses, brackets, unicode characters, etc.
+    The filename may include an extension (which is preserved when it fits), or
+    could be just a name without an extension.
     """
     name, ext = os.path.splitext(filename)
-    name = "".join([char for char in name if char.isalnum() or char in "._-, "])
+    name = _FORBIDDEN_RE.sub("", name)
+    # Also sanitize the extension (excluding the leading dot)
+    if ext:
+        ext = "." + _FORBIDDEN_RE.sub("", ext[1:])
+    # If the stem was stripped entirely but an extension exists, use a
+    # fallback name so that the extension is not mistaken for a dotfile
+    # stem (e.g. "#.txt" → ".txt" → Path(".txt").suffix == "").
+    if not name and ext:
+        name = "file"
+    # Preserve the parent-directory marker so upload path validation rejects it.
+    if name + ext == "..":
+        return ".."
+    # Windows strips trailing spaces and dots from path segments. Remove them
+    # consistently on every platform so the returned upload path is portable.
+    filename = (name + ext).rstrip(" .")
+    if not filename:
+        filename = "file"
+    name, ext = os.path.splitext(filename)
+    # Prefix Windows reserved device names so uploads remain valid on NTFS
+    # (CON, PRN, AUX, NUL, COM1–COM9, LPT1–LPT9, with or without extension).
+    # Windows resolves device names from the segment before the *first* dot
+    # (e.g. "NUL.tar.gz" is the NUL device), so check the recombined filename
+    # the same way CPython's ntpath.isreserved does.
+    if (name + ext).partition(".")[0].rstrip(" ").upper() in _WINDOWS_RESERVED_NAMES:
+        name = "_" + name
     filename = name + ext
-    filename_len = len(filename.encode())
-    if filename_len > max_bytes:
-        while filename_len > max_bytes:
-            if len(name) == 0:
-                break
-            name = name[:-1]
-            filename = name + ext
-            filename_len = len(filename.encode())
-    return filename
+    while len(filename.encode()) > max_bytes and name:
+        name = name[:-1]
+        filename = name + ext
+    if len(filename.encode()) <= max_bytes:
+        return filename
+
+    # An extension can itself exceed the limit. Keep a usable fallback stem and
+    # truncate the extension by characters so multi-byte Unicode is never split.
+    name = "file"
+    while len(name.encode()) > max_bytes and name:
+        name = name[:-1]
+    while len((name + ext).encode()) > max_bytes and ext:
+        ext = ext[:-1]
+    return name + ext
+
+
+def encode_file_path(path: str | Path) -> str:
+    """Encode a filesystem path for use after a Gradio ``/file=`` route."""
+    return urllib.parse.quote(str(path), safe="/")
 
 
 def sanitize_parameter_names(original_name: str) -> str:
@@ -949,11 +1025,12 @@ def _json_schema_to_python_type(schema: Any, defs) -> str:
             elements = _json_schema_to_python_type(items, defs)
             return f"list[{elements}]"
     elif type_ == "object":
+        props = schema.get("properties", {})
+        if _is_file_schema(schema, defs or {}):
+            return "filepath"
 
         def get_desc(v):
             return f" ({v.get('description')})" if v.get("description") else ""
-
-        props = schema.get("properties", {})
 
         des = [
             f"{n}: {_json_schema_to_python_type(v, defs)}{get_desc(v)}"
@@ -1149,8 +1226,54 @@ async def async_traverse(
 
 
 def value_is_file(api_info: dict) -> bool:
-    info = _json_schema_to_python_type(api_info, api_info.get("$defs"))
-    return any(file_data_format in info for file_data_format in FILE_DATA_FORMATS)
+    return _schema_contains_file(api_info, api_info.get("$defs", {}))
+
+
+def _resolve_ref(schema: dict, defs: dict) -> dict:
+    """Resolve a $ref to its definition."""
+    if "$ref" in schema:
+        ref_name = schema["$ref"].split("/")[-1]
+        if ref_name in defs:
+            return defs[ref_name]
+    return schema
+
+
+def _is_file_schema(schema: dict, defs: dict | None = None) -> bool:
+    """Check if a schema directly represents a file type (has path + meta with gradio.FileData)."""
+    if defs is None:
+        defs = schema.get("$defs", {})
+    props = schema.get("properties", {})
+    if "path" not in props or "meta" not in props:
+        return False
+    meta = _resolve_ref(props["meta"], defs)
+    meta_props = meta.get("properties", {})
+    if "_type" in meta_props:
+        type_schema = meta_props["_type"]
+        return type_schema.get("const") == "gradio.FileData"
+    meta_default = meta.get("default", {})
+    if isinstance(meta_default, dict):
+        return meta_default.get("_type") == "gradio.FileData"
+    return False
+
+
+def _schema_contains_file(schema, defs: dict) -> bool:
+    """Recursively check if a JSON schema contains a file type anywhere."""
+    if not isinstance(schema, dict):
+        if isinstance(schema, list):
+            return any(_schema_contains_file(item, defs) for item in schema)
+        return False
+    if "$ref" in schema:
+        ref_name = schema["$ref"].split("/")[-1]
+        if ref_name in defs:
+            return _schema_contains_file(defs[ref_name], defs)
+        return False
+    if _is_file_schema(schema, defs):
+        return True
+    return any(
+        _schema_contains_file(v, defs)
+        for k, v in schema.items()
+        if k != "$defs" and isinstance(v, (dict, list))
+    )
 
 
 def is_filepath(s) -> bool:
@@ -1222,7 +1345,7 @@ def handle_file(filepath_or_url: str | Path):
     s = str(filepath_or_url)
     data = {"path": s, "meta": {"_type": "gradio.FileData"}}
     if is_http_url_like(s):
-        return {**data, "orig_name": s.split("/")[-1], "url": s}
+        return {**data, "orig_name": s.rsplit("/", maxsplit=1)[-1], "url": s}
     elif Path(s).exists():
         return {**data, "orig_name": Path(s).name}
     else:

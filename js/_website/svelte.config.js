@@ -112,6 +112,7 @@ const config = {
 			crawl: true,
 			entries: [
 				"*",
+				"/workflow",
 				`/${version}/docs`,
 				`/${version}/guides`,
 				`/main/docs`,
@@ -124,7 +125,9 @@ const config = {
 				`/main/docs/js/`,
 				...Object.keys(redirects),
 				`/4.44.1/docs`,
-				`/4.44.1/guides`
+				`/4.44.1/guides`,
+				`/5.49.1/docs`,
+				`/5.49.1/guides`
 			],
 			handleMissingId: "warn"
 		},

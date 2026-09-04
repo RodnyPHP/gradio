@@ -1,4 +1,4 @@
-<script context="module" lang="ts">
+<script module lang="ts">
 	export { default as BasePlot } from "./shared/Plot.svelte";
 </script>
 
@@ -49,8 +49,8 @@
 			{#if gradio.props.show_fullscreen_button}
 				<FullscreenButton
 					{fullscreen}
-					on:fullscreen={({ detail }) => {
-						fullscreen = detail;
+					onclick={(value) => {
+						fullscreen = value;
 					}}
 				/>
 			{/if}
@@ -65,7 +65,7 @@
 	/>
 	<Plot
 		value={gradio.props.value}
-		theme_mode={gradio.props.theme_mode}
+		theme_mode={gradio.shared.theme_mode}
 		show_label={gradio.shared.show_label}
 		caption={gradio.props.caption}
 		bokeh_version={gradio.props.bokeh_version}
@@ -74,5 +74,6 @@
 		x_lim={gradio.props.x_lim}
 		show_fullscreen_button={gradio.props.show_fullscreen_button}
 		on_change={() => gradio.dispatch("change")}
+		onselect={(data) => gradio.dispatch("select", data)}
 	/>
 </Block>

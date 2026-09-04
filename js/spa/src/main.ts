@@ -9,9 +9,12 @@ import { Client } from "@gradio/client";
 import type Index from "./Index.svelte";
 import type { ThemeMode } from "@gradio/core";
 import { mount, unmount } from "svelte";
-import "virtual:load-svelte";
 declare let BUILD_MODE: string;
 declare let GRADIO_VERSION: string;
+
+declare global {
+	var __MODE__: "_NORMAL_" | "_CC_" | undefined;
+}
 
 const ENTRY_CSS = "__ENTRY_CSS__";
 
@@ -25,7 +28,14 @@ let _res: (value?: unknown) => void;
 let pending = new Promise((res) => {
 	_res = res;
 });
+
+globalThis.__MODE__ ??= "_NORMAL_";
+const mode: "_NORMAL_" | "_CC_" = globalThis.__MODE__;
+
 async function get_index(): Promise<void> {
+	if (mode === "_CC_") {
+		await import("virtual:cc-init");
+	}
 	const modules = await Promise.all([
 		import("./Index.svelte"),
 		import("@gradio/core")
@@ -36,21 +46,6 @@ async function get_index(): Promise<void> {
 }
 
 function create_custom_element(): void {
-	// const o = {
-	// 	SvelteComponent: svelte.SvelteComponent
-	// };
-	// for (const key in svelte) {
-	// 	if (key === "SvelteComponent") continue;
-	// 	if (key === "SvelteComponentDev") {
-	// 		//@ts-ignore
-	// 		o[key] = o["SvelteComponent"];
-	// 	} else {
-	// 		//@ts-ignore
-	// 		o[key] = svelte[key];
-	// 	}
-	// }
-	//@ts-ignore
-	// window.__gradio__svelte__internal = o;
 	class GradioApp extends HTMLElement {
 		control_page_title: string | null;
 		initial_height: string;
@@ -89,7 +84,7 @@ function create_custom_element(): void {
 			this.loading = true;
 
 			if (this.app) {
-				this.app.$destroy();
+				unmount(this.app);
 			}
 
 			if (typeof FONTS !== "string") {

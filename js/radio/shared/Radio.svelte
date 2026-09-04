@@ -1,4 +1,4 @@
-<script context="module">
+<script module>
 	let id = 0;
 </script>
 
@@ -15,9 +15,9 @@
 	let is_selected = $derived(selected === internal_value);
 
 	async function handle_input(
-		e: Event & { target: EventTarget & HTMLInputElement }
+		e: Event & { currentTarget: EventTarget & HTMLInputElement }
 	): Promise<void> {
-		is_selected = e.target.checked;
+		is_selected = e.currentTarget.checked;
 		if (is_selected) {
 			await tick();
 			on_input();
@@ -38,7 +38,7 @@
 		value={internal_value}
 		aria-checked={is_selected}
 		bind:group={selected}
-		on:input={handle_input}
+		oninput={handle_input}
 	/>
 	<span>{display_value}</span>
 </label>
@@ -63,6 +63,18 @@
 
 	label:hover {
 		background: var(--checkbox-label-background-fill-hover);
+		transform: var(--button-transform-hover);
+		box-shadow: var(
+			--checkbox-label-shadow-hover,
+			var(--checkbox-label-shadow)
+		);
+	}
+	label:active {
+		transform: var(--button-transform-active);
+		box-shadow: var(
+			--checkbox-label-shadow-active,
+			var(--checkbox-label-shadow)
+		);
 	}
 	label:focus {
 		background: var(--checkbox-label-background-fill-focus);

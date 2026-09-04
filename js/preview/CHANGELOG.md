@@ -1,5 +1,43 @@
 # @gradio/preview
 
+## 0.17.0
+
+### Features
+
+- [#13329](https://github.com/gradio-app/gradio/pull/13329) [`7ac583a`](https://github.com/gradio-app/gradio/commit/7ac583a38a4c995d172033ff6e3700390201ff21) - Make builds go zoom zoom.  Thanks @pngwn!
+
+### Fixes
+
+- [#13622](https://github.com/gradio-app/gradio/pull/13622) [`95369a3`](https://github.com/gradio-app/gradio/commit/95369a3ddaf69665adfbed092fca88fb432ee80a) - Fix Windows filename/path handling (reserved names, node probe, file URLs).  Thanks @abidlabs!
+
+## 0.16.2
+
+### Fixes
+
+- [#13182](https://github.com/gradio-app/gradio/pull/13182) [`2e36802`](https://github.com/gradio-app/gradio/commit/2e36802a04251315454c3872aa888bbf984ae4c1) - fix: make example field optional in cc build.  Thanks @xr843!
+
+## 0.16.1
+
+### Fixes
+
+- [#12566](https://github.com/gradio-app/gradio/pull/12566) [`7760161`](https://github.com/gradio-app/gradio/commit/7760161258abe6329b754dd6d2511fc3b61fed95) - Fix custom components in SSR Mode + Custom Component Examples.  Thanks @freddyaboulton!
+
+## 0.16.0
+
+### Features
+
+- [#12879](https://github.com/gradio-app/gradio/pull/12879) [`c498688`](https://github.com/gradio-app/gradio/commit/c4986883b267570d76b442899c6fc09d14e3e222) - Ensure svelte version mismatches do not break custom components.  Thanks @pngwn!
+
+### Fixes
+
+- [#12970](https://github.com/gradio-app/gradio/pull/12970) [`7326ea3`](https://github.com/gradio-app/gradio/commit/7326ea312bee7ccdaf4a1e4e11ace8f11b607ca5) - remove new console logs.  Thanks @hannahblair!
+
+## 0.15.2
+
+### Fixes
+
+- [#12800](https://github.com/gradio-app/gradio/pull/12800) [`7a1c321`](https://github.com/gradio-app/gradio/commit/7a1c321b6546ba05a353488f5133e8262c4a8a39) - Bump svelte/kit for security reasons.  Thanks @freddyaboulton!
+
 ## 0.15.1
 
 ### Fixes

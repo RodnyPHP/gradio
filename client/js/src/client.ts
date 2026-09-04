@@ -25,13 +25,16 @@ import { submit } from "./utils/submit";
 import { RE_SPACE_NAME, process_endpoint } from "./helpers/api_info";
 import {
 	map_names_to_ids,
+	normalise_token_option,
 	resolve_cookies,
 	resolve_config,
 	get_jwt,
 	parse_and_set_cookies
 } from "./helpers/init_helpers";
 import { check_and_wake_space, check_space_status } from "./helpers/spaces";
+import { initialize_zerogpu_handshake } from "./helpers/zerogpu";
 import { open_stream, readable_stream, close_stream } from "./utils/stream";
+import { clear_run_history } from "./utils/run_history";
 import {
 	API_INFO_ERROR_MSG,
 	APP_ID_URL,
@@ -142,7 +145,7 @@ export class Client {
 		this.abort_controller = new AbortController();
 
 		this.stream_instance = readable_stream(url.toString(), {
-			credentials: "include",
+			credentials: this.options.credentials ?? "same-origin",
 			headers: headers,
 			signal: this.abort_controller.signal
 		});
@@ -185,7 +188,10 @@ export class Client {
 		event_data?: unknown
 	) => Promise<PredictReturn<T>>;
 	open_stream: () => Promise<void>;
-	private resolve_config: (endpoint: string) => Promise<Config | undefined>;
+	private resolve_config: (
+		endpoint: string,
+		strip_current_page?: boolean
+	) => Promise<Config | undefined>;
 	private resolve_cookies: () => Promise<void>;
 	constructor(
 		app_reference: string,
@@ -196,9 +202,15 @@ export class Client {
 		if (!options.events) {
 			options.events = ["data"];
 		}
+		normalise_token_option(options);
 
 		this.options = options;
 		this.current_payload = {};
+
+		if (options.cookies) {
+			this.cookies = options.cookies;
+		}
+
 		this.view_api = view_api.bind(this);
 		this.upload_files = upload_files.bind(this);
 		this.handle_blob = handle_blob.bind(this);
@@ -215,15 +227,25 @@ export class Client {
 	}
 
 	private async init(): Promise<void> {
+		initialize_zerogpu_handshake();
+
 		if (this.options.auth) {
 			await this.resolve_cookies();
 		}
 
-		await this._resolve_config().then(({ config }) =>
-			this._resolve_heartbeat(config)
+		await this._resolve_config().then(
+			(res: { config: Config } | undefined) =>
+				res?.config && this._resolve_heartbeat(res.config)
 		);
 
-		this.api_info = await this.view_api();
+		try {
+			this.api_info = await this.view_api();
+		} catch (e) {
+			// A failure to fetch API info should not prevent the client from
+			// connecting: otherwise the SSR server renders a spurious login
+			// page whenever the /info endpoint is unreachable.
+			console.error((e as Error).message);
+		}
 		this.api_map = map_names_to_ids(this.config?.dependencies || []);
 	}
 
@@ -304,6 +326,32 @@ export class Client {
 		close_stream(this.stream_status, this.abort_controller);
 	}
 
+	/**
+	 * Re-fetch the app config without closing the SSE stream.
+	 * Used by hot-reload so in-flight generators keep delivering updates.
+	 */
+	async refresh(): Promise<Config> {
+		if (!this.config) {
+			throw new Error(CONFIG_ERROR_MSG);
+		}
+		// config.root is already the app root. resolve_config normally strips the
+		// current page from its endpoint, which would strip one path segment too
+		// many when refreshing from a subpage.
+		const config = await this.resolve_config(this.config.root, false);
+		if (!config) {
+			throw new Error(CONFIG_ERROR_MSG);
+		}
+		this.config = config;
+		this.api_prefix = config.api_prefix || "";
+		this.api_map = map_names_to_ids(config.dependencies || []);
+		try {
+			this.api_info = await this.view_api();
+		} catch (e) {
+			console.error(API_INFO_ERROR_MSG + (e as Error).message);
+		}
+		return this.get_url_config();
+	}
+
 	set_current_payload(payload: any): void {
 		this.current_payload = payload;
 	}
@@ -356,7 +404,7 @@ export class Client {
 						load_status: "error",
 						detail: "NOT_FOUND"
 					});
-				throw Error(e);
+				throw e instanceof Error ? e : new Error(String(e));
 			}
 		}
 	}
@@ -366,6 +414,15 @@ export class Client {
 	): Promise<Config | client_return> {
 		this.config = _config;
 		this.api_prefix = _config.api_prefix || "";
+
+		// Opting out also purges, so an app that turns the feature off does not
+		// leave behind what it stored while it was on.
+		if (_config.run_history === false) {
+			clear_run_history({
+				app_id: _config.app_id,
+				username: _config.username
+			});
+		}
 
 		if (this.config.auth_required) {
 			return this.prepare_return_obj();
@@ -415,7 +472,7 @@ export class Client {
 	public async component_server(
 		component_id: number,
 		fn_name: string,
-		data: unknown[] | { binary: boolean; data: Record<string, any> }
+		data: unknown | { binary: boolean; data: Record<string, any> }
 	): Promise<unknown> {
 		if (!this.config) {
 			throw new Error(CONFIG_ERROR_MSG);
@@ -445,11 +502,12 @@ export class Client {
 
 		let body: FormData | string;
 
-		if ("binary" in data) {
+		if (typeof data === "object" && data !== null && "binary" in data) {
+			const _data = data as { binary: boolean; data: Record<string, any> };
 			body = new FormData();
-			for (const key in data.data) {
+			for (const key in _data.data) {
 				if (key === "binary") continue;
-				body.append(key, data.data[key]);
+				body.append(key, _data.data[key]);
 			}
 			body.set("component_id", component_id.toString());
 			body.set("fn_name", fn_name);
@@ -476,7 +534,7 @@ export class Client {
 					method: "POST",
 					body: body,
 					headers,
-					credentials: "include"
+					credentials: this.options.credentials ?? "same-origin"
 				}
 			);
 

@@ -3,7 +3,7 @@ import {
 	type CopyData,
 	type CustomButton
 } from "@gradio/utils";
-import type { LoadingStatus } from "@gradio/statustracker";
+import type { ILoadingStatus as LoadingStatus } from "@gradio/statustracker";
 
 export interface TextboxEvents {
 	change: string;
@@ -34,7 +34,6 @@ export interface TextboxProps {
 	autoscroll: boolean;
 	max_length: number;
 	html_attributes: InputHTMLAttributes;
-	validation_error: string | null;
 }
 
 type FullAutoFill =

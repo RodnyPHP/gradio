@@ -1,4 +1,4 @@
-import type { LoadingStatus } from "js/statustracker";
+import type { ILoadingStatus as LoadingStatus } from "js/statustracker";
 import type { CustomButton } from "@gradio/utils";
 
 export interface JSONProps {
@@ -8,7 +8,6 @@ export interface JSONProps {
 	height: number | string | undefined;
 	min_height: number | string | undefined;
 	max_height: number | string | undefined;
-	theme_mode: "system" | "light" | "dark";
 	buttons: (string | CustomButton)[];
 }
 

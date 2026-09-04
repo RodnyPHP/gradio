@@ -1,5 +1,96 @@
 # @gradio/form
 
+## 0.4.2
+
+### Dependency updates
+
+- @gradio/utils@0.14.0
+- @gradio/atoms@0.26.1
+
+## 0.4.1
+
+### Dependency updates
+
+- @gradio/icons@0.16.0
+- @gradio/atoms@0.26.0
+
+## 0.4.0
+
+### Features
+
+- [#13526](https://github.com/gradio-app/gradio/pull/13526) [`53cb4ca`](https://github.com/gradio-app/gradio/commit/53cb4cae1ec3521e9170d12867253516413ba37a) - Run `pnpm lint` and `pnpm ts:check` on CI.  Thanks @abidlabs!
+
+### Dependency updates
+
+- @gradio/atoms@0.25.0
+- @gradio/utils@0.13.0
+
+## 0.3.4
+
+### Dependency updates
+
+- @gradio/atoms@0.24.0
+
+## 0.3.3
+
+### Features
+
+- [#13231](https://github.com/gradio-app/gradio/pull/13231) [`89f7a09`](https://github.com/gradio-app/gradio/commit/89f7a096ceb947c97ac5dce9f8b8d62e1361ad7b) - Layout tests.  Thanks @pngwn!
+
+### Dependency updates
+
+- @gradio/atoms@0.23.1
+
+## 0.3.2
+
+### Dependency updates
+
+- @gradio/utils@0.12.2
+- @gradio/atoms@0.23.0
+
+## 0.3.1
+
+### Dependency updates
+
+- @gradio/utils@0.12.1
+
+## 0.3.1
+
+### Dependency updates
+
+- @gradio/utils@0.12.0
+- @gradio/atoms@0.22.2
+
+## 0.3.0
+
+### Features
+
+- [#12839](https://github.com/gradio-app/gradio/pull/12839) [`1c671b3`](https://github.com/gradio-app/gradio/commit/1c671b39830ccf1c87f6cfcb4669e97dfb3a7367) - Hide forms with no elements.  Thanks @aliabid94!
+
+### Dependency updates
+
+- @gradio/utils@0.11.3
+- @gradio/atoms@0.22.0
+
+## 0.2.30
+
+### Dependency updates
+
+- @gradio/atoms@0.21.0
+
+## 0.2.29
+
+### Fixes
+
+- [#12800](https://github.com/gradio-app/gradio/pull/12800) [`7a1c321`](https://github.com/gradio-app/gradio/commit/7a1c321b6546ba05a353488f5133e8262c4a8a39) - Bump svelte/kit for security reasons.  Thanks @freddyaboulton!
+- [#12607](https://github.com/gradio-app/gradio/pull/12607) [`299728b`](https://github.com/gradio-app/gradio/commit/299728b707c88e7afbc6a60f1f266a9013fa424d) - fix: add ARIA landmarks for accessibility.  Thanks @majiayu000!
+
+### Dependency updates
+
+- @gradio/atoms@0.20.1
+- @gradio/utils@0.11.2
+- @gradio/icons@0.15.1
+
 ## 0.2.28
 
 ### Dependency updates

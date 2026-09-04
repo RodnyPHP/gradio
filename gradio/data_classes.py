@@ -56,6 +56,12 @@ class CancelBody(BaseModel):
 class SimplePredictBody(BaseModel):
     data: list[Any]
     session_hash: str | None = None
+    oauth_token: str | None = None
+
+
+class SimplePredictBodyV2(BaseModel):
+    data: dict[str, Any]
+    session_hash: str | None = None
 
 
 class _StarletteRequestPydanticAnnotation:
@@ -86,6 +92,8 @@ class PredictBody(BaseModel):
     session_hash: str | None = None
     event_id: str | None = None
     data: list[Any]
+    # Secret: a caller-supplied token for endpoints that take a gr.OAuthToken.
+    oauth_token: str | None = None
     event_data: Any | None = None
     fn_index: int | None = None
     trigger_id: int | None = None
@@ -103,6 +111,7 @@ class PredictBody(BaseModel):
                 "session_hash": {"type": "string"},
                 "event_id": {"type": "string"},
                 "data": {"type": "array", "items": {"type": "object"}},
+                "oauth_token": {"type": "string"},
                 "event_data": {"type": "object"},
                 "fn_index": {"type": "integer"},
                 "trigger_id": {"type": "integer"},
@@ -412,6 +421,7 @@ class BlocksConfigDict(TypedDict):
     i18n_translations: NotRequired[dict[str, dict[str, str]] | None]
     mcp_server: NotRequired[bool]
     footer_links: list[str | dict[str, str]]
+    run_history: NotRequired[bool]
 
 
 class MediaStreamChunk(TypedDict):
@@ -433,9 +443,7 @@ class ImageData(GradioModel):
     meta: dict = {"_type": "gradio.FileData"}
 
     model_config = ConfigDict(
-        json_schema_extra={
-            "description": "For input, either path or url must be provided. For output, path is always provided."
-        }
+        json_schema_extra={"description": "A local filepath or publicly available URL."}
     )
 
 
@@ -455,6 +463,8 @@ class APIEndpointInfo(TypedDict):
     parameters: list[ParameterInfo]
     returns: list[APIReturnInfo]
     api_visibility: Literal["public", "private", "undocumented"]
+    # Set only when the function takes a gr.OAuthToken.
+    oauth_token: NotRequired[Literal["required", "optional"]]
 
 
 class APIInfo(TypedDict):

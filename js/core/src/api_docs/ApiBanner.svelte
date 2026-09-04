@@ -1,32 +1,43 @@
 <script lang="ts">
-	import { createEventDispatcher } from "svelte";
 	import api_logo from "./img/api-logo.svg";
 	import Clear from "./img/clear.svelte";
 	import { BaseButton } from "@gradio/button";
 
-	export let root: string;
-	export let api_count: number;
-	export let current_language: "python" | "javascript" | "bash" | "mcp" =
-		"python";
-
-	const dispatch = createEventDispatcher();
+	let {
+		root,
+		api_count,
+		current_language = "python",
+		onclose
+	}: {
+		root: string;
+		api_count: number;
+		current_language?:
+			| "python"
+			| "javascript"
+			| "bash"
+			| "skill"
+			| "mcp"
+			| "cli";
+		onclose?: (detail?: { api_recorder_visible: boolean }) => void;
+	} = $props();
 </script>
 
 <h2>
 	<img src={api_logo} alt="" />
 	<div class="title">
-		{#if current_language === "mcp"}MCP{:else}API{/if} documentation
+		{#if current_language === "mcp"}MCP{:else if current_language === "cli"}CLI{:else}API{/if}
+		documentation
 		<div class="url">
 			{root}
 		</div>
 	</div>
 	<span class="counts">
-		{#if current_language !== "mcp"}
+		{#if current_language !== "mcp" && current_language !== "cli"}
 			<BaseButton
 				size="sm"
 				variant="secondary"
 				elem_id="start-api-recorder"
-				onclick={() => dispatch("close", { api_recorder_visible: true })}
+				onclick={() => onclose?.({ api_recorder_visible: true })}
 			>
 				<div class="loading-dot self-baseline"></div>
 				<p class="self-baseline btn-text">API Recorder</p>
@@ -34,13 +45,13 @@
 		{/if}
 		<p>
 			<span class="url">{api_count}</span>
-			{#if current_language !== "mcp"}API endpoint{:else}MCP Tool{/if}{#if api_count > 1}s{/if}<br
-			/>
+			{#if current_language === "mcp"}MCP Tool{:else if current_language === "cli"}CLI
+				endpoint{:else}API endpoint{/if}{#if api_count > 1}s{/if}<br />
 		</p>
 	</span>
 </h2>
 
-<button on:click={() => dispatch("close")}>
+<button onclick={() => onclose?.()}>
 	<Clear />
 </button>
 

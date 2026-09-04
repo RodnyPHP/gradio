@@ -10,6 +10,7 @@
 		remember_scroll = false,
 		offset_from_top = 0,
 		from_top = false,
+		listbox_id = undefined,
 		onchange,
 		onload
 	}: {
@@ -22,13 +23,14 @@
 		remember_scroll?: boolean;
 		offset_from_top?: number;
 		from_top?: boolean;
+		listbox_id?: string;
 		onchange?: (index: any) => void;
 		onload?: () => void;
 	} = $props();
 
-	let distance_from_top: number;
-	let distance_from_bottom: number;
-	let input_height: number;
+	let distance_from_top = $state(0);
+	let distance_from_bottom = $state(0);
+	let input_height = $state(0);
 	let input_width = $state(0);
 	let refElement: HTMLDivElement;
 	let listElement: HTMLUListElement;
@@ -102,7 +104,7 @@
 	});
 </script>
 
-<svelte:window on:scroll={scroll_listener} bind:innerHeight />
+<svelte:window onscroll={scroll_listener} bind:innerHeight />
 
 <div class="reference" bind:this={refElement} />
 {#if show_options && !disabled}
@@ -119,6 +121,7 @@
 		style:max-height={`calc(${max_height}px - var(--window-padding))`}
 		style:width={input_width + "px"}
 		bind:this={listElement}
+		id={listbox_id}
 		role="listbox"
 	>
 		{#each filtered_indices as index}
@@ -130,6 +133,7 @@
 				class:dark:bg-gray-600={index === active_index}
 				style:width={input_width + "px"}
 				data-index={index}
+				id={listbox_id ? `${listbox_id}-option-${index}` : undefined}
 				aria-label={choices[index][0]}
 				data-testid="dropdown-option"
 				role="option"

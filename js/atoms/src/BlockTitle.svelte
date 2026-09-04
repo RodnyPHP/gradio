@@ -1,8 +1,18 @@
 <script lang="ts">
-	import { default as Info } from "./Info.svelte";
-	export let show_label = true;
-	export let info: string | undefined = undefined;
-	export let rtl = false;
+	import type { Snippet } from "svelte";
+	import Info from "./Info.svelte";
+
+	let {
+		show_label = true,
+		info = undefined,
+		rtl = false,
+		children
+	}: {
+		show_label?: boolean;
+		info?: string | undefined;
+		rtl?: boolean;
+		children?: Snippet;
+	} = $props();
 </script>
 
 <span
@@ -12,7 +22,7 @@
 	data-testid="block-info"
 	dir={rtl ? "rtl" : "ltr"}
 >
-	<slot />
+	{@render children?.()}
 </span>
 {#if info}
 	<Info {info} />

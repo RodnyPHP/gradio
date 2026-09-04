@@ -49,6 +49,7 @@ class HighlightedText(Component):
         show_inline_category: bool = True,
         combine_adjacent: bool = False,
         adjacent_separator: str = "",
+        show_whitespaces: bool = True,
         label: str | I18nData | None = None,
         every: Timer | float | None = None,
         inputs: Component | Sequence[Component] | set[Component] | None = None,
@@ -74,8 +75,9 @@ class HighlightedText(Component):
             show_inline_category: If False, will not display span category label. Only applies if show_legend=False and interactive=False.
             combine_adjacent: If True, will merge the labels of adjacent tokens belonging to the same category.
             adjacent_separator: Specifies the separator to be used between tokens if combine_adjacent is True.
+            show_whitespaces: If False, leading and trailing whitespace of each token will be stripped before display.
             label: the label for this component. Appears above the component and is also used as the header if there are a table of examples for this component. If None and used in a `gr.Interface`, the label will be the name of the parameter this component is assigned to.
-            every: Continously calls `value` to recalculate it if `value` is a function (has no effect otherwise). Can provide a Timer whose tick resets `value`, or a float that provides the regular interval for the reset Timer.
+            every: Continuously calls `value` to recalculate it if `value` is a function (has no effect otherwise). Can provide a Timer whose tick resets `value`, or a float that provides the regular interval for the reset Timer.
             inputs: Components that are used as inputs to calculate `value` if `value` is a function (has no effect otherwise). `value` is recalculated any time the inputs change.
             show_label: if True, will display label.
             container: If True, will place the component in a container - providing some extra padding around the border.
@@ -96,6 +98,7 @@ class HighlightedText(Component):
         self.show_inline_category = show_inline_category
         self.combine_adjacent = combine_adjacent
         self.adjacent_separator = adjacent_separator
+        self.show_whitespaces = show_whitespaces
         self.rtl = rtl
         super().__init__(
             label=label,
@@ -133,7 +136,9 @@ class HighlightedText(Component):
         Parameters:
             payload: An instance of HighlightedTextData
         Returns:
-            Passes the value as a list of tuples as a `list[tuple]` into the function. Each `tuple` consists of a `str` substring of the text (so the entire text is included) and `str | float | None` label, which is the category or confidence of that substring.
+            Passes the value as a list of tuples: `list[tuple]`. Each `tuple` consists of:
+            - a `str` substring of the text (so the entire text is included)
+            - a `str | float | None` label, which is the category or confidence of that substring.
         """
         if payload is None:
             return None
@@ -144,7 +149,10 @@ class HighlightedText(Component):
     ) -> HighlightedTextData | None:
         """
         Parameters:
-            value: Expects a list of (word, category) tuples, or a dictionary of two keys: "text", and "entities", which itself is a list of dictionaries, each of which have the keys: "entity" (or "entity_group"), "start", and "end"
+            value: Expects either of:
+                - a list of (word, category) tuples
+                - a dictionary of two keys: "text", and "entities".
+                -- "entities" itself is a list of dictionaries, each of which have the keys: "entity" (or "entity_group"), "start", and "end"
         Returns:
             An instance of HighlightedTextData
         """
@@ -178,15 +186,17 @@ class HighlightedText(Component):
             output = []
             running_text, running_category = None, None
             for text, category in value:
+                if not text:
+                    # Drop empty tokens so they neither seed a run nor get a
+                    # spurious separator when merged. These are inserted
+                    # between entities when a dict value is converted above,
+                    # but skipping them for list values is also correct.
+                    continue
                 if running_text is None:
                     running_text = text
                     running_category = category
                 elif category == running_category:
                     running_text += self.adjacent_separator + text
-                elif not text:
-                    # Skip fully empty item, these get added in processing
-                    # of dictionaries.
-                    pass
                 else:
                     output.append((running_text, running_category))
                     running_text = text
@@ -195,14 +205,32 @@ class HighlightedText(Component):
                 output.append((running_text, running_category))
             return HighlightedTextData(
                 root=[
-                    HighlightedToken(token=o[0], class_or_confidence=o[1])
+                    HighlightedToken(
+                        token=self._normalize_token(o[0]),
+                        class_or_confidence=o[1],
+                    )
                     for o in output
                 ]
             )
         else:
             return HighlightedTextData(
                 root=[
-                    HighlightedToken(token=o[0], class_or_confidence=o[1])
+                    HighlightedToken(
+                        token=self._normalize_token(o[0]),
+                        class_or_confidence=o[1],
+                    )
                     for o in value
                 ]
             )
+
+    def _normalize_token(self, text: str) -> str:
+        """
+        Normalize a token before it is sent to the frontend.
+
+        If show_whitespaces is False, trim leading and trailing whitespace so that
+        tokens are rendered without surrounding spaces. When show_whitespaces is
+        True (the default), preserve the token exactly as provided.
+        """
+        if self.show_whitespaces:
+            return text
+        return text.strip()

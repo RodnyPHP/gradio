@@ -1,4 +1,4 @@
-<script lang="ts" context="module">
+<script module lang="ts">
 	import type { Tool, Subtool } from "./Toolbar.svelte";
 
 	export const EDITOR_KEY = Symbol("editor");
@@ -6,7 +6,7 @@
 </script>
 
 <script lang="ts">
-	import { onMount, createEventDispatcher, tick } from "svelte";
+	import { onMount, tick, type Snippet } from "svelte";
 	import { get } from "svelte/store";
 	import Toolbar, { type Tool as ToolbarTool } from "./Toolbar.svelte";
 	import { CropTool } from "./crop/crop";
@@ -30,49 +30,94 @@
 	import IconButton from "./IconButton.svelte";
 
 	const { drag, open_file_upload } = create_drag();
-	const dispatch = createEventDispatcher<{
-		clear?: never;
-		save: void;
-		change: void;
-		upload: void;
-		input: void;
-		download_error: string;
-	}>();
 
 	export const antialias = true;
 
-	export let changeable = false;
-	export let sources: Source[] = ["upload", "webcam", "clipboard"];
-	export let transforms: Transform[] = ["crop", "resize"];
-	export let canvas_size: [number, number];
-	export let is_dragging = false;
-	export let background_image = false;
-	export let brush_options: Brush;
-	export let eraser_options: Eraser;
-	export let fixed_canvas = false;
-	export let root: string;
-	export let i18n: I18nFormatter;
-	export let upload: Client["upload"];
-	export let composite: FileData | null;
-	export let layers: FileData[];
-	export let background: FileData | null;
-	export let border_region = 0;
-	export let layer_options: LayerOptions;
-	export let current_tool: ToolbarTool;
-	export let webcam_options: WebcamOptions;
-	export let show_download_button = false;
-	export let theme_mode: "dark" | "light";
-	export let full_history: CommandNode | null = null;
+	let {
+		changeable = false,
+		sources = ["upload", "webcam", "clipboard"],
+		transforms = ["crop", "resize"],
+		canvas_size,
+		is_dragging = $bindable(false),
+		background_image = $bindable(false),
+		brush_options,
+		eraser_options,
+		fixed_canvas = false,
+		root,
+		i18n,
+		upload,
+		composite,
+		layers,
+		background,
+		border_region = 0,
+		layer_options,
+		current_tool = $bindable(),
+		webcam_options,
+		show_download_button = false,
+		theme_mode,
+		full_history = $bindable(null),
+		has_drawn = $bindable(false),
+		can_undo = $bindable(false),
+		has_user_edits = $bindable(false),
+		onclear,
+		onsave,
+		onchange,
+		onupload,
+		oninput,
+		ondownload_error,
+		children
+	}: {
+		changeable?: boolean;
+		sources?: Source[];
+		transforms?: Transform[];
+		canvas_size: [number, number];
+		is_dragging?: boolean;
+		background_image?: boolean;
+		brush_options: Brush | false;
+		eraser_options: Eraser | false;
+		fixed_canvas?: boolean;
+		root: string;
+		i18n: I18nFormatter;
+		upload: Client["upload"];
+		composite: FileData | null;
+		layers: FileData[];
+		background: FileData | null;
+		border_region?: number;
+		layer_options: LayerOptions;
+		current_tool: ToolbarTool;
+		webcam_options: WebcamOptions;
+		show_download_button?: boolean;
+		theme_mode: "dark" | "light";
+		full_history?: CommandNode | null;
+		has_drawn?: boolean;
+		can_undo?: boolean;
+		has_user_edits?: boolean;
+		onclear?: () => void;
+		onsave?: () => void;
+		onchange?: () => void;
+		onupload?: () => void;
+		oninput?: () => void;
+		ondownload_error?: (error: string) => void;
+		children?: Snippet;
+	} = $props();
 
 	let pixi_target: HTMLDivElement;
 	let pixi_target_crop: HTMLDivElement;
 
-	$: if (layer_options) {
-		if (check_if_should_init()) {
-			editor.set_layer_options(layer_options);
-			refresh_tools();
-		}
-	}
+	let layer_options_key: string | undefined | null = null;
+	$effect(() => {
+		if (!check_if_should_init()) return;
+
+		const next_layer_options_key = JSON.stringify(layer_options);
+		if (next_layer_options_key === layer_options_key) return;
+
+		layer_options_key = next_layer_options_key;
+		editor.set_layer_options(layer_options);
+	});
+
+	$effect(() => {
+		refresh_tools();
+	});
 
 	function refresh_tools(): void {
 		if (!editor || !ready) return;
@@ -80,13 +125,14 @@
 		editor.set_subtool(current_subtool);
 	}
 
-	$: if (editor && ready && editor.layers) {
+	$effect(() => {
+		if (!(editor && ready && editor.layers)) return;
 		const current_layers = get(editor.layers);
 
 		if (current_layers.layers.length > 0 && !current_layers.active_layer) {
 			refresh_tools_for_layer_changes(current_layers);
 		}
-	}
+	});
 
 	/**
 	 * Refreshes tools when layer state changes
@@ -115,8 +161,6 @@
 		return layer_options && editor && ready;
 	}
 
-	export let has_drawn = false;
-
 	/**
 	 * Gets the image blobs from the editor
 	 * @returns {Promise<ImageBlobs>} Object containing background, layers, and composite image blobs
@@ -140,6 +184,7 @@
 	}
 
 	let pending_bg: Promise<void>;
+	let loading_value = 0;
 	/**
 	 * Adds an image to the editor from a URL
 	 * @param {string | FileData} source - The URL of the image or a FileData object
@@ -157,6 +202,8 @@
 			| any
 	): Promise<void> {
 		if (!editor || !source || !check_if_should_init()) return;
+		has_user_edits = false;
+		loading_value += 1;
 		let url: string;
 
 		if (typeof source === "string") {
@@ -165,6 +212,7 @@
 			url = source.url;
 		} else {
 			console.warn("Invalid source provided to add_image_from_url:", source);
+			loading_value -= 1;
 			return;
 		}
 
@@ -176,10 +224,12 @@
 			crop.set_subtool("crop");
 			background_image = true;
 			zoom.set_zoom("fit");
-			dispatch("upload");
-			dispatch("input");
+			onupload?.();
+			oninput?.();
 		} catch (error) {
 			console.error("Error adding image from URL:", error);
+		} finally {
+			loading_value -= 1;
 		}
 	}
 
@@ -192,28 +242,32 @@
 		source: FileData[] | any
 	): Promise<void> {
 		if (!editor || !source.length || !check_if_should_init()) return;
+		has_user_edits = false;
+		loading_value += 1;
 
-		if (
-			Array.isArray(source) &&
-			source.every((item) => item?.meta?._type === "gradio.FileData")
-		) {
-			try {
+		try {
+			if (
+				Array.isArray(source) &&
+				source.every((item) => item?.meta?._type === "gradio.FileData")
+			) {
 				await pending_bg;
 				await editor.add_layers_from_url(source.map((item) => item.url));
-				dispatch("change");
-				dispatch("input");
-			} catch (error) {
-				console.error("Error adding layer from URL:", error);
+				onchange?.();
+				oninput?.();
 			}
+		} catch (error) {
+			console.error("Error adding layer from URL:", error);
+		} finally {
+			loading_value -= 1;
 		}
 	}
 
 	let brush: BrushTool;
 	let zoom: ZoomTool;
-	let zoom_level = 1;
-	let ready = false;
-	let mounted = false;
-	let min_zoom = true;
+	let zoom_level = $state(1);
+	let ready = $state(false);
+	let mounted = $state(false);
+	let min_zoom = $state(true);
 
 	let last_dimensions = { width: 0, height: 0 };
 
@@ -221,8 +275,10 @@
 	 * Handles visibility changes and resets zoom if dimensions have changed
 	 */
 	async function handle_visibility_change(): Promise<void> {
-		if (!editor || !ready || !zoom) return;
+		if (!editor || !ready || !zoom || !pixi_target) return;
 		await tick();
+
+		if (!pixi_target) return;
 
 		const is_visible = pixi_target.offsetParent !== null;
 
@@ -316,8 +372,7 @@
 
 	let crop: ImageEditor;
 	let crop_zoom: ZoomTool;
-	export let can_undo = false;
-	let can_redo = false;
+	let can_redo = $state(false);
 	async function init_image_editor(): Promise<void> {
 		brush = new BrushTool();
 		zoom = new ZoomTool();
@@ -371,15 +426,20 @@
 			ready = true;
 			if (sources.length > 0) {
 				handle_tool_change({ tool: "image" });
-			} else {
+			} else if (brush_options) {
 				handle_tool_change({ tool: "draw" });
+			} else if (eraser_options) {
+				handle_tool_change({ tool: "erase" });
+			} else {
+				handle_tool_change({ tool: "image" });
 			}
 			crop.set_subtool("crop");
 		});
 
 		editor.on("change", () => {
-			dispatch("change");
-			dispatch("input");
+			if (loading_value === 0) has_user_edits = true;
+			onchange?.();
+			oninput?.();
 			full_history = editor.command_manager.history;
 		});
 
@@ -399,23 +459,27 @@
 		refresh_tools();
 	}
 
-	$: if (
-		background == null &&
-		layers.length == 0 &&
-		composite == null &&
-		editor &&
-		ready
-	) {
-		editor.reset_canvas();
-		zoom.set_zoom("fit");
-		handle_tool_change({ tool: "image" });
-		background_image = false;
-		has_drawn = false;
-	}
+	$effect(() => {
+		if (
+			background == null &&
+			layers.length == 0 &&
+			composite == null &&
+			editor &&
+			ready
+		) {
+			editor.reset_canvas();
+			zoom.set_zoom("fit");
+			handle_tool_change({ tool: "image" });
+			background_image = false;
+			has_drawn = false;
+		}
+	});
 
-	$: current_tool === "image" &&
-		current_subtool === "crop" &&
-		crop_zoom.set_zoom("fit");
+	$effect(() => {
+		if (current_tool === "image" && current_subtool === "crop") {
+			crop_zoom.set_zoom("fit");
+		}
+	});
 
 	/**
 	 * Handles file uploads
@@ -435,10 +499,15 @@
 		background_image = true;
 		zoom.set_zoom("fit");
 		handle_tool_change({ tool: "draw" });
-		dispatch("upload");
+		onupload?.();
 	}
 
-	$: background_image = can_undo && editor.command_manager.contains("AddImage");
+	$effect(() => {
+		if (editor) {
+			background_image =
+				can_undo && editor.command_manager.contains("AddImage");
+		}
+	});
 
 	/**
 	 * Handles tool change events
@@ -496,13 +565,13 @@
 		}
 	}
 
-	let eraser_size_visible = false;
-	let selected_color: ColorInput | string;
-	let selected_size: number;
-	let selected_opacity = 1;
-	let selected_eraser_size: number;
+	let eraser_size_visible = $state(false);
+	let selected_color = $state<ColorInput | string>();
+	let selected_size = $state<number>();
+	let selected_opacity = $state(1);
+	let selected_eraser_size = $state<number>();
 
-	$: {
+	$effect(() => {
 		if (brush_options) {
 			update_brush_options();
 		}
@@ -510,13 +579,15 @@
 		if (eraser_options) {
 			update_eraser_options();
 		}
-	}
+	});
 
 	function update_brush_options(): void {
+		if (!brush_options) return;
+		const options = brush_options;
 		const default_color =
-			brush_options.default_color === "auto"
-				? brush_options.colors[0]
-				: brush_options.default_color;
+			options.default_color === "auto"
+				? options.colors[0]
+				: options.default_color;
 
 		// color is already a tuple [color, opacity]
 		if (Array.isArray(default_color)) {
@@ -535,59 +606,86 @@
 		}
 
 		selected_size =
-			typeof brush_options.default_size === "number"
-				? brush_options.default_size
-				: 25;
+			typeof options.default_size === "number" ? options.default_size : 25;
 	}
 
 	function update_eraser_options(): void {
+		if (!eraser_options) return;
+		const options = eraser_options;
 		selected_eraser_size =
-			eraser_options.default_size === "auto" ? 25 : eraser_options.default_size;
+			options.default_size === "auto" ? 25 : options.default_size;
 	}
 
-	let brush_size_visible = false;
+	let brush_size_visible = $state(false);
 
-	let brush_color_visible = false;
+	let brush_color_visible = $state(false);
 
-	$: brush?.set_brush_color(
-		(() => {
-			let color_value;
-			if (selected_color === "auto") {
-				const default_color =
-					brush_options.colors.find((color) =>
-						Array.isArray(color)
-							? color[0] === brush_options.default_color
-							: color === brush_options.default_color
-					) || brush_options.colors[0];
+	$effect(() => {
+		if (!brush) return;
+		brush.set_brush_color(
+			(() => {
+				let color_value: ColorInput = "black";
+				if (selected_color === "auto") {
+					if (!brush_options) return "black";
+					const default_color =
+						brush_options.colors.find((color) =>
+							Array.isArray(color)
+								? color[0] === brush_options.default_color
+								: color === brush_options.default_color
+						) || brush_options.colors[0];
 
-				color_value = Array.isArray(default_color)
-					? default_color[0]
-					: default_color;
-			} else {
-				color_value = selected_color;
-			}
-			return color_value;
-		})()
-	);
+					color_value = Array.isArray(default_color)
+						? default_color[0]
+						: default_color;
+				} else {
+					color_value = selected_color ?? "black";
+				}
+				return color_value;
+			})()
+		);
+	});
 
-	$: brush?.set_brush_size(
-		typeof selected_size === "number" ? selected_size : 25
-	);
+	$effect(() => {
+		brush?.set_brush_size(
+			typeof selected_size === "number" ? selected_size : 25
+		);
+	});
 
-	$: brush?.set_eraser_size(
-		typeof selected_eraser_size === "number" ? selected_eraser_size : 25
-	);
+	$effect(() => {
+		brush?.set_eraser_size(
+			typeof selected_eraser_size === "number" ? selected_eraser_size : 25
+		);
+	});
 
-	$: disable_click =
-		current_tool !== "image" ||
-		(current_tool === "image" && background_image) ||
-		(current_tool === "image" && current_subtool === "webcam") ||
-		!sources.includes("upload");
+	let disable_click = $state(true);
+	$effect(() => {
+		disable_click =
+			current_tool !== "image" ||
+			(current_tool === "image" && background_image) ||
+			(current_tool === "image" && current_subtool === "webcam") ||
+			!sources.includes("upload");
+	});
 
-	let current_subtool: Subtool | null = null;
-	let preview = false;
-	$: brush?.preview_brush(preview);
-	$: brush?.set_brush_opacity(selected_opacity);
+	let current_subtool = $state<Subtool | null>(null);
+	let preview = $state(false);
+	$effect(() => {
+		brush?.preview_brush(preview);
+	});
+	$effect(() => {
+		brush?.set_brush_opacity(selected_opacity);
+	});
+
+	function remove_image(): void {
+		onclear?.();
+		editor.reset_canvas();
+		handle_tool_change({ tool: "image" });
+		background_image = false;
+		has_drawn = false;
+	}
+
+	export function handle_remove(): void {
+		remove_image();
+	}
 
 	function handle_zoom_change(zoom_level: number | "fit"): void {
 		zoom.set_zoom(zoom_level);
@@ -614,19 +712,23 @@
 		}
 	}
 
-	function handle_capture(e: CustomEvent): void {
-		if (e.detail !== null) {
-			handle_files(e.detail as Blob);
+	function handle_capture(value: FileData | Blob | null): void {
+		if (value !== null) {
+			handle_files(value as Blob);
 		}
 		handle_subtool_change({ tool: current_tool, subtool: null });
 	}
 
 	function handle_save(): void {
-		dispatch("save");
+		onsave?.();
 	}
 
-	$: add_image_from_url(composite || background);
-	$: add_layers_from_url(layers);
+	$effect(() => {
+		add_image_from_url(composite || background);
+	});
+	$effect(() => {
+		add_layers_from_url(layers);
+	});
 
 	async function handle_crop_confirm(): Promise<void> {
 		const { image } = await crop.get_crop_bounds();
@@ -637,8 +739,8 @@
 			resize: false
 		});
 		handle_subtool_change({ tool: "image", subtool: null });
-		dispatch("change");
-		dispatch("input");
+		onchange?.();
+		oninput?.();
 	}
 
 	async function handle_download(): Promise<void> {
@@ -646,7 +748,7 @@
 
 		const blob = blobs.composite;
 		if (!blob) {
-			dispatch("download_error", "Unable to generate image to download.");
+			ondownload_error?.("Unable to generate image to download.");
 			return;
 		}
 		const url = URL.createObjectURL(blob);
@@ -667,12 +769,13 @@
 
 	let old_background = background;
 
-	$: if (old_background !== background) {
+	$effect(() => {
+		if (old_background === background) return;
 		handle_tool_change({ tool: "draw" });
 		handle_subtool_change({ tool: "draw", subtool: null });
 		current_tool = "draw";
 		old_background = background;
-	}
+	});
 </script>
 
 <div
@@ -683,7 +786,8 @@
 		on_drag_change: (dragging) => (is_dragging = dragging),
 		on_files: handle_files,
 		accepted_types: "image/*",
-		disable_click: disable_click
+		disable_click: disable_click,
+		ignore_click_selector: ".toolbar-wrap"
 	}}
 	aria-label={"Click to upload or drop files"}
 	aria-dropeffect="copy"
@@ -691,41 +795,37 @@
 	{#if ready}
 		{#if current_subtool !== "crop"}
 			<Controls
+				{i18n}
 				{changeable}
-				on:set_zoom={(e) => handle_zoom_change(e.detail)}
-				on:zoom_in={() => zoom_in_out("in")}
-				on:zoom_out={() => zoom_in_out("out")}
+				onset_zoom={(zoom) => handle_zoom_change(zoom)}
+				onzoom_in={() => zoom_in_out("in")}
+				onzoom_out={() => zoom_in_out("out")}
 				{min_zoom}
 				current_zoom={zoom_level}
-				on:remove_image={() => {
-					dispatch("clear");
-					editor.reset_canvas();
-					handle_tool_change({ tool: "image" });
-					background_image = false;
-					has_drawn = false;
-				}}
+				onremove_image={remove_image}
 				tool={current_tool}
 				can_save={true}
-				on:save={handle_save}
-				on:pan={(e) => {
+				onsave={handle_save}
+				onpan={() => {
 					handle_tool_change({ tool: "pan" });
 				}}
 				enable_download={show_download_button}
-				on:download={() => handle_download()}
+				ondownload={() => handle_download()}
 				{can_undo}
 				{can_redo}
-				on:undo={handle_undo}
-				on:redo={handle_redo}
+				onundo={handle_undo}
+				onredo={handle_redo}
 			/>
 		{/if}
 
 		{#if current_subtool !== "crop"}
 			<Toolbar
+				{i18n}
 				{sources}
 				{transforms}
 				background={background_image}
-				on:tool_change={(e) => handle_tool_change(e.detail)}
-				on:subtool_change={(e) => handle_subtool_change(e.detail)}
+				ontool_change={(detail) => handle_tool_change(detail)}
+				onsubtool_change={(detail) => handle_subtool_change(detail)}
 				show_brush_size={brush_size_visible}
 				show_brush_color={brush_color_visible}
 				show_eraser_size={eraser_size_visible}
@@ -747,9 +847,7 @@
 					<Webcam
 						{upload}
 						{root}
-						on:capture={handle_capture}
-						on:error
-						on:drag
+						oncapture={handle_capture}
 						streaming={false}
 						mode="image"
 						include_audio={false}
@@ -763,25 +861,26 @@
 
 		{#if current_subtool !== "crop" && !layer_options.disabled}
 			<SecondaryToolbar
+				{i18n}
 				enable_additional_layers={layer_options.allow_additional_layers}
 				layers={editor.layers}
-				on:new_layer={() => {
+				onnew_layer={() => {
 					editor.add_layer();
 				}}
-				on:change_layer={(e) => {
-					editor.set_layer(e.detail);
+				onchange_layer={(id) => {
+					editor.set_layer(id);
 					if (current_tool === "draw") {
 						handle_tool_change({ tool: "draw" });
 					}
 				}}
-				on:move_layer={(e) => {
-					editor.move_layer(e.detail.id, e.detail.direction);
+				onmove_layer={({ id, direction }) => {
+					editor.move_layer(id, direction);
 				}}
-				on:delete_layer={(e) => {
-					editor.delete_layer(e.detail);
+				ondelete_layer={(id) => {
+					editor.delete_layer(id);
 				}}
-				on:toggle_layer_visibility={(e) => {
-					editor.toggle_layer_visibility(e.detail);
+				ontoggle_layer_visibility={(id) => {
+					editor.toggle_layer_visibility(id);
 				}}
 			/>
 		{/if}
@@ -801,18 +900,18 @@
 		<div class="crop-confirm-button">
 			<IconButton
 				Icon={Check}
-				label="Confirm crop"
+				label={i18n("image_editor.confirm_crop")}
 				show_label={true}
 				size="large"
 				padded={true}
 				color="white"
 				background="var(--color-green-500)"
 				label_position="right"
-				on:click={handle_crop_confirm}
+				onclick={handle_crop_confirm}
 			/>
 		</div>
 	{/if}
-	<slot></slot>
+	{#if children}{@render children()}{/if}
 </div>
 
 <style>

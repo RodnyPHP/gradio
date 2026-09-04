@@ -50,9 +50,8 @@ class TestHighlightedText:
             {"entity": "PER", "start": 4, "end": 8},
             {"entity": "LOC", "start": 18, "end": 24},
         ]
-        # After a merge empty entries are stripped except the leading one
+        # After a merge empty entries are stripped
         result_after_merge = [
-            {"token": "", "class_or_confidence": None},
             {"token": "Wolfgang", "class_or_confidence": "PER"},
             {"token": " lives in ", "class_or_confidence": None},
             {"token": "Berlin", "class_or_confidence": "LOC"},
@@ -96,6 +95,42 @@ class TestHighlightedText:
             {"token": "", "class_or_confidence": None},
         ]
 
+    def test_combine_adjacent_empty_tokens(self):
+        component = gr.HighlightedText(combine_adjacent=True, adjacent_separator=" ")
+
+        value = [("", None), ("foo", None), ("bar", None)]
+        assert (result_ := component.postprocess(value))
+        assert result_.model_dump() == [
+            {"token": "foo bar", "class_or_confidence": None}
+        ]
+
+        value = [("foo", None), ("", None), ("bar", None)]
+        assert (result_ := component.postprocess(value))
+        assert result_.model_dump() == [
+            {"token": "foo bar", "class_or_confidence": None}
+        ]
+
+        text = "Wolfgang lives in Berlin"
+        entities = [{"entity": "PER", "start": 0, "end": 8}]
+        assert (result_ := component.postprocess({"text": text, "entities": entities}))
+        assert result_.model_dump() == [
+            {"token": "Wolfgang", "class_or_confidence": "PER"},
+            {"token": " lives in Berlin", "class_or_confidence": None},
+        ]
+
+    def test_show_whitespaces(self):
+        component = gr.HighlightedText(show_whitespaces=True)
+        assert (result_ := component.postprocess([(" Hello", "label")]))
+        assert result_.model_dump() == [
+            {"token": " Hello", "class_or_confidence": "label"}
+        ]
+
+        component = gr.HighlightedText(show_whitespaces=False)
+        assert (result_ := component.postprocess([(" Hello", "label")]))
+        assert result_.model_dump() == [
+            {"token": "Hello", "class_or_confidence": "label"}
+        ]
+
     def test_component_functions(self):
         """
         get_config
@@ -122,6 +157,7 @@ class TestHighlightedText:
             "preserved_by_key": ["value"],
             "combine_adjacent": False,
             "adjacent_separator": "",
+            "show_whitespaces": True,
             "interactive": None,
             "buttons": [],
         }

@@ -6,6 +6,7 @@ import gradio.processing_utils
 import gradio.templates
 from gradio import components, layouts, mcp, themes, validators
 from gradio.blocks import Blocks
+from gradio.caching import Cache, cache
 from gradio.chat_interface import ChatInterface
 from gradio.cli import deploy
 from gradio.components import (
@@ -66,6 +67,7 @@ from gradio.components import (
     Timer,
     UploadButton,
     Video,
+    WorkflowCanvas,
     component,
 )
 from gradio.components.audio import WaveformOptions
@@ -121,6 +123,7 @@ from gradio.oauth import OAuthProfile, OAuthToken
 from gradio.renderable import render
 from gradio.route_utils import Header
 from gradio.routes import Request, mount_gradio_app
+from gradio.server import Server
 from gradio.templates import (
     Files,
     ImageMask,
@@ -136,13 +139,15 @@ from gradio.templates import (
 )
 from gradio.themes import Base as Theme
 from gradio.utils import NO_RELOAD, FileSize, get_package_version, set_static_paths
+from gradio.workflow import Workflow
 
-# this is the verion:
+# this is the version:
 __version__ = get_package_version()
 
 __all__ = [
     "Accordion",
     "AnnotatedImage",
+    "Server",
     "Annotatedimage",
     "Audio",
     "BarPlot",
@@ -151,6 +156,8 @@ __all__ = [
     "Brush",
     "Button",
     "CSVLogger",
+    "Cache",
+    "cache",
     "ChatInterface",
     "ChatMessage",
     "Chatbot",
@@ -278,4 +285,6 @@ __all__ = [
     "get_model3d",
     "get_file",
     "validators",
+    "Workflow",
+    "WorkflowCanvas",
 ]

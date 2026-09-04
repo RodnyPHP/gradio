@@ -1,5 +1,181 @@
 # @self/spa
 
+## 1.7.0
+
+### Dependency updates
+
+- @gradio/client@2.5.1
+
+## 1.7.0
+
+### Features
+
+- [#13718](https://github.com/gradio-app/gradio/pull/13718) [`a9e8382`](https://github.com/gradio-app/gradio/commit/a9e8382c4f68e938b5fceef299d7539434c6063f) - Add browser-local run history and loading.  Thanks @abidlabs!
+
+### Dependency updates
+
+- @gradio/client@2.5.0
+
+## 1.6.0
+
+### Features
+
+- [#13601](https://github.com/gradio-app/gradio/pull/13601) [`0ee5cc8`](https://github.com/gradio-app/gradio/commit/0ee5cc80e2915e5a1b074c892490a62f165cd80d) - Preserve browser-visible proxy origins for frontend assets and API requests, and retain app-level FastAPI root paths.  Thanks @abidlabs!
+- [#13329](https://github.com/gradio-app/gradio/pull/13329) [`7ac583a`](https://github.com/gradio-app/gradio/commit/7ac583a38a4c995d172033ff6e3700390201ff21) - Make builds go zoom zoom.  Thanks @pngwn!
+
+### Dependency updates
+
+- @gradio/client@2.4.0
+- @gradio/theme@0.7.0
+- @gradio/core@1.10.0
+- @self/build@0.6.2
+
+## 1.5.1
+
+### Fixes
+
+- [#13561](https://github.com/gradio-app/gradio/pull/13561) [`882df35`](https://github.com/gradio-app/gradio/commit/882df35e9eaa7b2fb8767e23f03c66c46ab66d78) - Fix `TypeError: this.app.$destroy is not a function` when embedding a Gradio app with the `<gradio-app>` web component.  Thanks @abidlabs!
+
+### Dependency updates
+
+- @gradio/client@2.3.1
+- @gradio/core@1.9.0
+
+## 1.5.0
+
+### Features
+
+- [#13526](https://github.com/gradio-app/gradio/pull/13526) [`53cb4ca`](https://github.com/gradio-app/gradio/commit/53cb4cae1ec3521e9170d12867253516413ba37a) - Run `pnpm lint` and `pnpm ts:check` on CI.  Thanks @abidlabs!
+
+### Dependency updates
+
+- @gradio/client@2.3.0
+- @gradio/theme@0.6.2
+- @gradio/core@1.8.0
+
+## 1.4.2
+
+### Dependency updates
+
+- @gradio/client@2.2.2
+
+## 1.4.2
+
+### Fixes
+
+- [#13450](https://github.com/gradio-app/gradio/pull/13450) [`dba4a16`](https://github.com/gradio-app/gradio/commit/dba4a168ce00c15497fd2b99a3364ebbb4842b72) - preserve head script execution order.  Thanks @hysts!
+
+## 1.4.1
+
+### Fixes
+
+- [#13463](https://github.com/gradio-app/gradio/pull/13463) [`58088ad`](https://github.com/gradio-app/gradio/commit/58088ad1d75eee0f93ba1c02f427ee04f60847b4) - Self-host frontend assets so that Gradio works offline!.  Thanks @abidlabs!
+
+### Dependency updates
+
+- @gradio/core@1.6.0
+
+## 1.4.0
+
+### Features
+
+- [#13366](https://github.com/gradio-app/gradio/pull/13366) [`10f43e0`](https://github.com/gradio-app/gradio/commit/10f43e0fe187aac9594f3a9765f8addc81b63ad1) - Offload traffic to static workers and use node as the proxy.  Thanks @freddyaboulton!
+
+### Dependency updates
+
+- @gradio/client@2.2.1
+- @gradio/core@1.5.1
+
+## 1.3.1
+
+### Dependency updates
+
+- @gradio/core@1.5.0
+
+## 1.3.1
+
+### Fixes
+
+- [#13239](https://github.com/gradio-app/gradio/pull/13239) [`9efdcb5`](https://github.com/gradio-app/gradio/commit/9efdcb57b46fc808dc55051a113154489fcc237d) - Reduce `gradio` package size by restoring frontend settings.  Thanks @abidlabs!
+- [#13210](https://github.com/gradio-app/gradio/pull/13210) [`4005b93`](https://github.com/gradio-app/gradio/commit/4005b93dd59d7e0d144619986f01e900659b3d0b) - Fix ZeroGPU handling for `gr.Server`.  Thanks @abidlabs!
+
+### Dependency updates
+
+- @gradio/client@2.2.0
+- @gradio/core@1.4.2
+
+## 1.3.0
+
+### Features
+
+- [#13151](https://github.com/gradio-app/gradio/pull/13151) [`c13daab`](https://github.com/gradio-app/gradio/commit/c13daab68aa40cb58f2c643a650b5db48e986935) - add test utils.  Thanks @pngwn!
+- [#13150](https://github.com/gradio-app/gradio/pull/13150) [`9487b60`](https://github.com/gradio-app/gradio/commit/9487b60670f6532eaccb3251d15f5505fa23d4e3) - migrate dataframe to svelte 5.  Thanks @pngwn!
+
+### Dependency updates
+
+- @gradio/core@1.4.2
+
+## 1.2.0
+
+### Features
+
+- [#12998](https://github.com/gradio-app/gradio/pull/12998) [`d5e1b8f`](https://github.com/gradio-app/gradio/commit/d5e1b8f6cb7473b70fc8c082589996d5e0402810) - use a real browser environment for unit tests.  Thanks @pngwn!
+
+### Fixes
+
+- [#13028](https://github.com/gradio-app/gradio/pull/13028) [`30af84c`](https://github.com/gradio-app/gradio/commit/30af84cdd100855999281de8720cbb6d58b48556) - Browser tests follow-up.  Thanks @pngwn!
+
+### Dependency updates
+
+- @gradio/core@1.4.1
+
+## 1.1.0
+
+### Features
+
+- [#12879](https://github.com/gradio-app/gradio/pull/12879) [`c498688`](https://github.com/gradio-app/gradio/commit/c4986883b267570d76b442899c6fc09d14e3e222) - Ensure svelte version mismatches do not break custom components.  Thanks @pngwn!
+
+### Fixes
+
+- [#12970](https://github.com/gradio-app/gradio/pull/12970) [`7326ea3`](https://github.com/gradio-app/gradio/commit/7326ea312bee7ccdaf4a1e4e11ace8f11b607ca5) - remove new console logs.  Thanks @hannahblair!
+
+### Dependency updates
+
+- @gradio/core@1.4.0
+- @self/build@0.6.0
+
+## 1.0.3
+
+### Dependency updates
+
+- @gradio/client@2.1.0
+
+## 1.0.3
+
+### Fixes
+
+- [#12797](https://github.com/gradio-app/gradio/pull/12797) [`6a0c6ea`](https://github.com/gradio-app/gradio/commit/6a0c6eae53931ec137c0b8379428acc8a7ea27c9) - Refactor translation logic.  Thanks @hannahblair!
+
+### Dependency updates
+
+- @gradio/core@1.2.0
+
+## 1.0.2
+
+### Dependency updates
+
+- @gradio/client@2.0.4
+- @gradio/core@1.1.3
+
+## 1.0.2
+
+### Dependency updates
+
+- @gradio/client@2.0.3
+- @gradio/theme@0.6.1
+- @gradio/core@1.1.2
+- @self/build@0.5.2
+
 ## 1.0.2
 
 ### Dependency updates

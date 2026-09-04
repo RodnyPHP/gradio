@@ -1,33 +1,63 @@
 <script lang="ts">
-	import { afterUpdate, tick, onMount } from "svelte";
+	import { onMount, tick } from "svelte";
 	import { create_marked } from "./utils";
 	import { sanitize } from "@gradio/sanitize";
 	import "./prism.css";
 	import { standardHtmlAndSvgTags } from "./html-tags";
 	import type { ThemeMode } from "@gradio/core";
 
-	export let chatbot = true;
-	export let message: string;
-	export let sanitize_html = true;
-	export let latex_delimiters: {
-		left: string;
-		right: string;
-		display: boolean;
-	}[] = [];
-	export let render_markdown = true;
-	export let line_breaks = true;
-	export let header_links = false;
-	export let allow_tags: string[] | boolean = false;
-	export let theme_mode: ThemeMode = "system";
+	let {
+		chatbot = true,
+		message,
+		sanitize_html = true,
+		latex_delimiters = [],
+		render_markdown = true,
+		line_breaks = true,
+		header_links = false,
+		allow_tags = false,
+		theme_mode = "system",
+		onload
+	}: {
+		chatbot?: boolean;
+		message: string;
+		sanitize_html?: boolean;
+		latex_delimiters?: {
+			left: string;
+			right: string;
+			display: boolean;
+		}[];
+		render_markdown?: boolean | undefined;
+		line_breaks?: boolean;
+		header_links?: boolean;
+		allow_tags?: string[] | boolean | undefined;
+		theme_mode?: ThemeMode;
+		onload?: () => void;
+	} = $props();
+
 	let el: HTMLSpanElement;
-	let html: string;
-	let katex_loaded = false;
 
 	const marked = create_marked({
 		header_links,
 		line_breaks,
 		latex_delimiters: latex_delimiters || []
 	});
+
+	let html = $state("");
+	let render_token = 0;
+
+	$effect(() => {
+		const token = ++render_token;
+		if (message && message.trim()) {
+			process_message(message).then((result) => {
+				// drop results from superseded renders so streaming chunks
+				// don't clobber each other out of order
+				if (token === render_token) html = result;
+			});
+		} else {
+			html = "";
+		}
+	});
+	let katex_loaded = false;
 
 	function has_math_syntax(text: string): boolean {
 		if (!latex_delimiters || latex_delimiters.length === 0) {
@@ -80,7 +110,7 @@
 		return content;
 	}
 
-	function process_message(value: string): string {
+	async function process_message(value: string): Promise<string> {
 		let parsedValue = value;
 		if (render_markdown) {
 			const latexBlocks: string[] = [];
@@ -97,7 +127,7 @@
 				});
 			});
 
-			parsedValue = marked.parse(parsedValue) as string;
+			parsedValue = (await marked.parse(parsedValue)) as string;
 
 			parsedValue = parsedValue.replace(
 				/%%%LATEX_BLOCK_(\d+)%%%/g,
@@ -115,12 +145,6 @@
 		return parsedValue;
 	}
 
-	$: if (message && message.trim()) {
-		html = process_message(message);
-	} else {
-		html = "";
-	}
-
 	async function render_html(value: string): Promise<void> {
 		if (latex_delimiters.length > 0 && value && has_math_syntax(value)) {
 			if (!katex_loaded) {
@@ -135,9 +159,8 @@
 					});
 				});
 			} else {
-				const { default: render_math_in_element } = await import(
-					"katex/contrib/auto-render"
-				);
+				const { default: render_math_in_element } =
+					await import("katex/contrib/auto-render");
 				render_math_in_element(el, {
 					delimiters: latex_delimiters,
 					throwOnError: false
@@ -163,9 +186,9 @@
 		}
 	}
 
-	afterUpdate(async () => {
+	$effect(() => {
 		if (el && document.body.contains(el)) {
-			await render_html(message);
+			render_html(message).then(() => onload?.());
 		} else {
 			console.error("Element is not in the DOM");
 		}
@@ -177,6 +200,13 @@
 </span>
 
 <style>
+	span {
+		/* `anywhere`, not `break-word`: it also lowers min-content width, so
+		   markdown in a table/flex container shrinks to fit instead of forcing
+		   the container to overflow. */
+		overflow-wrap: anywhere;
+	}
+
 	span :global(div[class*="code_wrap"]) {
 		position: relative;
 	}

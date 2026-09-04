@@ -2,17 +2,32 @@
 	import { Loader } from "@gradio/statustracker";
 	import { represent_value } from "./utils";
 
-	export let is_running: boolean;
-	export let endpoint_returns: any;
-	export let js_returns: any;
-	export let current_language: "python" | "javascript" | "bash" | "mcp";
+	let {
+		is_running,
+		endpoint_returns,
+		js_returns,
+		current_language
+	}: {
+		is_running: boolean;
+		endpoint_returns: any;
+		js_returns: any;
+		current_language:
+			| "python"
+			| "javascript"
+			| "cli"
+			| "bash"
+			| "skill"
+			| "mcp";
+	} = $props();
 </script>
 
 <h4>
 	<div class="toggle-icon">
 		<div class="toggle-dot" />
 	</div>
-	Accepts {endpoint_returns.length} parameter{#if endpoint_returns.length != 1}s{/if}:
+	{#if current_language === "bash"}Accepts a JSON object with {endpoint_returns.length}
+		key{#if endpoint_returns.length != 1}s{/if}:{:else}Accepts {endpoint_returns.length}
+		parameter{#if endpoint_returns.length != 1}s{/if}:{/if}
 </h4>
 
 <div class:hide={is_running}>
@@ -21,13 +36,13 @@
 		<div style="margin:10px;">
 			<p style="white-space: nowrap; overflow-x: auto;">
 				<span class="code" style="margin-right: 10px;"
-					>{current_language !== "bash" && parameter_name
-						? parameter_name
-						: "[" + i + "]"}</span
+					>{parameter_name || `[${i}]`}</span
 				>
 				<span class="code highlight" style="margin-right: 10px;"
 					>{#if current_language === "python"}{python_type.type}{#if parameter_has_default && parameter_default === null}&nbsp;|
-							None{/if}{:else}{js_returns[i].type || "any"}{/if}</span
+							None{/if}{:else if current_language === "bash"}{python_type.type}{:else}{js_returns[
+							i
+						].type || "any"}{/if}</span
 				>
 				{#if !parameter_has_default || current_language == "bash"}<span
 						style="font-weight:bold">Required</span

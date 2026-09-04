@@ -17,7 +17,7 @@ import warnings
 import weakref
 import webbrowser
 from collections import defaultdict
-from collections.abc import AsyncIterator, Callable, Coroutine, Sequence, Set
+from collections.abc import AsyncIterator, Awaitable, Callable, Coroutine, Sequence, Set
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from typing import TYPE_CHECKING, Any, Literal, Union, cast
@@ -35,12 +35,14 @@ from gradio import (
     analytics,
     components,
     networking,
+    oauth,
     processing_utils,
     queueing,
     utils,
 )
 from gradio.block_function import BlockFunction
 from gradio.blocks_events import BLOCKS_EVENTS, BlocksEvents, BlocksMeta
+from gradio.caching import TrackManualCacheUsage, used_manual_cache
 from gradio.context import (
     Context,
     LocalContext,
@@ -65,9 +67,13 @@ from gradio.events import (
 )
 from gradio.exceptions import (
     ChecksumMismatchError,
+    ComponentProcessingError,
     DuplicateBlockError,
+    Error,
     InvalidApiNameError,
     InvalidComponentError,
+    ServerFailedToStartError,
+    ShareCertificateWriteError,
 )
 from gradio.helpers import create_tracker, skip, special_args
 from gradio.i18n import I18n, I18nData
@@ -96,7 +102,7 @@ from gradio.utils import (
 try:
     import spaces  # type: ignore
 except Exception:
-    spaces = None
+    spaces = None  # type: ignore[assignment]
 
 
 if TYPE_CHECKING:  # Only import for type checking (is False at runtime).
@@ -117,6 +123,9 @@ class Block:
         visible: bool | Literal["hidden"] = True,
         proxy_url: str | None = None,
     ):
+        if getattr(self, "_is_initialized", False):
+            return
+        self._is_initialized = True
         key_to_id_map = LocalContext.key_to_id_map.get(None)
         if key is not None and key_to_id_map and key in key_to_id_map:
             self.is_render_replacement = True
@@ -131,7 +140,7 @@ class Block:
         self.elem_id = elem_id
         self.elem_classes = (
             [elem_classes] if isinstance(elem_classes, str) else elem_classes
-        )
+        ) or []
         self.proxy_url = proxy_url
         self.share_token = secrets.token_urlsafe(32)
         self.parent: BlockContext | None = None
@@ -150,7 +159,7 @@ class Block:
         )
         self.mcp_server_obj = None
 
-        # Keep tracks of files that should not be deleted when the delete_cache parmameter is set
+        # Keep tracks of files that should not be deleted when the delete_cache parameter is set
         # These files are the default value of the component and files that are used in examples
         self.keep_in_cache = set()
         self.has_launched = False
@@ -435,6 +444,24 @@ class Block:
             except AttributeError:  # Can be raised if this function is called before the Block is fully initialized.
                 return data
 
+    @classmethod
+    def get_component_class_id(cls) -> str:
+        try:
+            module_path = inspect.getfile(cls)
+        except OSError:
+            module_path = cls.__module__
+        module_hash = hashlib.sha256(
+            f"{cls.__name__}_{module_path}".encode()
+        ).hexdigest()
+        return module_hash
+
+    @property
+    def component_class_id(self):
+        return self.get_component_class_id()
+
+    def postprocess(self, value):
+        return value
+
 
 class BlockContext(Block):
     def __init__(
@@ -470,21 +497,6 @@ class BlockContext(Block):
     @property
     def skip_api(self):
         return True
-
-    @classmethod
-    def get_component_class_id(cls) -> str:
-        try:
-            module_path = inspect.getfile(cls)
-        except OSError:
-            module_path = cls.__module__
-        module_hash = hashlib.sha256(
-            f"{cls.__name__}_{module_path}".encode()
-        ).hexdigest()
-        return module_hash
-
-    @property
-    def component_class_id(self):
-        return self.get_component_class_id()
 
     def add_child(self, child: Block):
         self.children.append(child)
@@ -538,12 +550,6 @@ class BlockContext(Block):
         if getattr(self, "allow_expected_parents", True):
             self.fill_expected_parents()
 
-    def postprocess(self, y):
-        """
-        Any postprocessing needed to be performed on a block context.
-        """
-        return y
-
 
 def postprocess_update_dict(
     block: Component | BlockContext, update_dict: dict, postprocess: bool = True
@@ -582,23 +588,36 @@ def postprocess_update_dict(
 
 
 def convert_component_dict_to_list(
-    outputs_ids: list[int], predictions: dict
+    outputs: Sequence[Block], predictions: dict
 ) -> list | dict:
     """
     Converts a dictionary of component updates into a list of updates in the order of
-    the outputs_ids and including every output component. Leaves other types of dictionaries unchanged.
+    the output components and including every output component. Leaves other types of dictionaries unchanged.
     E.g. {"textbox": "hello", "number": {"__type__": "generic_update", "value": "2"}}
     Into -> ["hello", {"__type__": "generic_update"}, {"__type__": "generic_update", "value": "2"}]
     """
     keys_are_blocks = [isinstance(key, Block) for key in predictions]
     if all(keys_are_blocks):
+        outputs_ids = [block._id for block in outputs]
         reordered_predictions = [skip() for _ in outputs_ids]
         for component, value in predictions.items():
-            if component._id not in outputs_ids:
+            if component._id in outputs_ids:
+                output_index = outputs_ids.index(component._id)
+            else:
+                # The returned component object may be stale, e.g. created before
+                # the app was hot-reloaded, so fall back to matching by key.
+                output_index = next(
+                    (
+                        index
+                        for index, block in enumerate(outputs)
+                        if component.key is not None and block.key == component.key
+                    ),
+                    None,
+                )
+            if output_index is None:
                 raise ValueError(
                     f"Returned component {component} not specified as output of function."
                 )
-            output_index = outputs_ids.index(component._id)
             reordered_predictions[output_index] = value
         predictions = utils.resolve_singleton(reordered_predictions)
     elif any(keys_are_blocks):
@@ -608,6 +627,31 @@ def convert_component_dict_to_list(
     return predictions
 
 
+def _find_free_port(host: str, start: int, try_count: int = 100) -> int:
+    """Find an available port by scanning from *start*."""
+    import socket
+
+    for port in range(start, start + try_count):
+        try:
+            s = socket.socket()
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            s.bind((host if host != "0.0.0.0" else "127.0.0.1", port))
+            s.close()
+            return port
+        except OSError:
+            continue
+    raise OSError(f"Cannot find empty port in range: {start}-{start + try_count - 1}.")
+
+
+def _port_is_free(host: str, port: int) -> bool:
+    """Whether *port* can be bound, checked the same way as `_find_free_port`."""
+    try:
+        _find_free_port(host, start=port, try_count=1)
+    except OSError:
+        return False
+    return True
+
+
 class BlocksConfig:
     def __init__(self, root_block: Blocks):
         self._id: int = 0
@@ -615,6 +659,7 @@ class BlocksConfig:
         self.blocks: dict[int, Component | Block] = {}
         self.fns: dict[int, BlockFunction] = {}
         self.fn_id: int = 0
+        self.renderables: list[Renderable] = root_block.renderables
 
     def set_event_trigger(
         self,
@@ -680,7 +725,7 @@ class BlocksConfig:
             show_progress_on: Component or list of components to show the progress animation on. If None, will show the progress animation on all of the output components.
             api_name: defines how the endpoint appears in the API docs. Can be a string or None. If set to a string, the endpoint will be exposed in the API docs with the given name. If None (default), the name of the function will be used as the API endpoint.
             api_description: Description of the API endpoint. Can be a string, None, or False. If set to a string, the endpoint will be exposed in the API docs with the given description. If None, the function's docstring will be used as the API endpoint description. If False, then no description will be displayed in the API docs.
-            js: Optional frontend js method to run before running 'fn'. Input arguments for js method are values of 'inputs' and 'outputs', return should be a list of values for output components
+            js: Optional frontend JavaScript to run before 'fn', provided as either a function or a raw code string. A function receives the values of 'inputs' and 'outputs' as arguments; raw code can access them through `arguments`. Return a list of values to pass as inputs to the Python function (`fn`).
             no_target: if True, sets "targets" to [], used for the Blocks.load() event and .then() events
             queue: If True, will place the request on the queue, if the queue has been enabled. If False, will not put this event on the queue, even if the queue has been enabled. If None, will use the queue setting of the gradio app.
             batch: whether this function takes in a batch of inputs
@@ -693,7 +738,7 @@ class BlocksConfig:
             trigger_mode: If "once" (default for all events except `.change()`) would not allow any submissions while an event is pending. If set to "multiple", unlimited submissions are allowed while pending, and "always_last" (default for `.change()` and `.key_up()` events) would allow a second submission after the pending event is complete.
             concurrency_limit: If set, this is the maximum number of this event that can be running simultaneously. Can be set to None to mean no concurrency_limit (any number of this event can be running simultaneously). Set to "default" to use the default concurrency limit (defined by the `default_concurrency_limit` parameter in `queue()`, which itself is 1 by default).
             concurrency_id: If set, this is the id of the concurrency group. Events with the same concurrency_id will be limited by the lowest set concurrency_limit.
-            api_visibility: controls the visibility and accessibility of this endpoint. Can be "public" (shown in API docs and callable by clients), "private" (hidden from API docs and not callable by clients), or "undocumented" (hidden from API docs but callable by clients and via gr.load). If fn is None, api_visibility will automatically be set to "private".
+            api_visibility: controls the visibility and accessibility of this endpoint. Can be "public" (shown in API docs and callable by clients), "private" (hidden from API docs and not callable by the Gradio client libraries), or "undocumented" (hidden from API docs but callable by clients and via gr.load). If fn is None, api_visibility will automatically be set to "private".
             is_cancel_function: whether this event cancels another running event.
             connection: The connection format, either "sse" or "stream".
             time_limit: The time limit for the function to run. Parameter only used for the `.stream()` event.
@@ -773,6 +818,9 @@ class BlocksConfig:
             else:
                 api_name = "unnamed"
                 api_visibility = "private"
+        elif api_name is False:
+            api_name = "false"
+            api_visibility = "private"
 
         api_name = utils.append_unique_suffix(
             api_name,
@@ -964,6 +1012,7 @@ class BlocksConfig:
         new.blocks = copy.copy(self.blocks)
         new.fns = copy.copy(self.fns)
         new.fn_id = self.fn_id
+        new.renderables = copy.copy(self.renderables)
         return new
 
     def attach_load_events(self, rendered_in: Renderable | None = None):
@@ -985,7 +1034,7 @@ class BlocksConfig:
                     load_fn,
                     inputs,
                     component,
-                    no_target=not has_target,
+                    no_target=False,
                     show_progress="hidden" if has_target else "full",
                 )[0]
                 component.load_event = dep.get_config()
@@ -1024,7 +1073,7 @@ class Blocks(BlockContext, BlocksEvents, metaclass=BlocksMeta):
 
         demo.launch()
     Demos: blocks_hello, blocks_flipper, blocks_kinematics
-    Guides: blocks-and-event-listeners, controlling-layout, state-in-blocks, custom-CSS-and-JS, using-blocks-like-functions
+    Guides: blocks-and-event-listeners, controlling-layout, state-in-blocks, more-blocks-features, using-blocks-like-functions
     """
 
     # stores references to all currently existing Blocks instances
@@ -1076,6 +1125,7 @@ class Blocks(BlockContext, BlocksEvents, metaclass=BlocksMeta):
         self.custom_mount_path: str | None = None
         self.pwa = False
         self.mcp_server = False
+        self.run_history = True
 
         # For analytics_enabled and allow_flagging: (1) first check for
         # parameter, (2) check for env variable, (3) default to True/"manual"
@@ -1206,7 +1256,9 @@ class Blocks(BlockContext, BlocksEvents, metaclass=BlocksMeta):
         config = copy.deepcopy(config)
         components_config = config["components"]
         original_mapping: dict[int, Block] = {}
-        proxy_urls = {proxy_url}
+        proxy_urls: set[str] = set()
+        if httpx.URL(proxy_url).host.endswith(".hf.space"):
+            proxy_urls.add(proxy_url)
 
         def get_block_instance(id: int) -> Block:
             for block_config in components_config:
@@ -1230,7 +1282,10 @@ class Blocks(BlockContext, BlocksEvents, metaclass=BlocksMeta):
 
             block_proxy_url = block_config["props"]["proxy_url"]
             block.proxy_url = block_proxy_url
-            proxy_urls.add(block_proxy_url)
+            # Only add proxy URLs that point to known Hugging Face Space
+            # hosts to prevent SSRF via malicious configs.
+            if httpx.URL(block_proxy_url).host.endswith(".hf.space"):
+                proxy_urls.add(block_proxy_url)
             if (
                 _selectable := block_config["props"].pop("_selectable", None)
             ) is not None:
@@ -1256,7 +1311,7 @@ class Blocks(BlockContext, BlocksEvents, metaclass=BlocksMeta):
 
         derived_fields = ["types"]
 
-        with Blocks() as blocks:
+        with Blocks(theme=config.get("theme", None)) as blocks:
             # ID 0 should be the root Blocks component
             original_mapping[0] = root_block = Context.root_block or blocks
 
@@ -1431,7 +1486,8 @@ class Blocks(BlockContext, BlocksEvents, metaclass=BlocksMeta):
 
     def render(self):
         root_context = get_blocks_context()
-        if root_context is not None and Context.root_block is not None:
+        if root_context is not None:
+            root_block = root_context.root_block
             if self._id in root_context.blocks:
                 raise DuplicateBlockError(
                     f"A block with id: {self._id} has already been rendered in the current Blocks."
@@ -1445,7 +1501,7 @@ class Blocks(BlockContext, BlocksEvents, metaclass=BlocksMeta):
                     )
 
             for block in self.blocks.values():
-                block.page = Context.root_block.current_page
+                block.page = root_block.current_page
             root_context.blocks.update(self.blocks)
             dependency_offset = max(root_context.fns.keys(), default=-1) + 1
             existing_api_names = [
@@ -1454,13 +1510,16 @@ class Blocks(BlockContext, BlocksEvents, metaclass=BlocksMeta):
                 if isinstance(dep.api_name, str)
             ]
             for dependency in self.fns.values():
-                dependency.page = Context.root_block.current_page
+                dependency.page = root_block.current_page
                 dependency._id += dependency_offset
                 # Any event -- e.g. Blocks.load() -- that is triggered by this Blocks
                 # should now be triggered by the root Blocks instead.
-                for target in dependency.targets:
-                    if target[0] == self._id:
-                        target = (Context.root_block._id, target[1])
+                dependency.targets = [
+                    (root_block._id, event_name)
+                    if target_id == self._id
+                    else (target_id, event_name)
+                    for target_id, event_name in dependency.targets
+                ]
                 api_name = dependency.api_name
                 if isinstance(api_name, str):
                     api_name_ = utils.append_unique_suffix(
@@ -1482,9 +1541,9 @@ class Blocks(BlockContext, BlocksEvents, metaclass=BlocksMeta):
                     dependency.cancels = get_cancelled_fn_indices(updated_cancels)
                 root_context.fns[dependency._id] = dependency
             root_context.fn_id = max(root_context.fns.keys(), default=-1) + 1
-            Context.root_block.temp_file_sets.extend(self.temp_file_sets)
-            Context.root_block.proxy_urls.update(self.proxy_urls)
-            Context.root_block.extra_startup_events.extend(self.extra_startup_events)
+            root_block.temp_file_sets.extend(self.temp_file_sets)
+            root_block.proxy_urls.update(self.proxy_urls)
+            root_block.extra_startup_events.extend(self.extra_startup_events)
 
         render_context = get_render_context()
         if render_context is not None:
@@ -1564,6 +1623,7 @@ class Blocks(BlockContext, BlocksEvents, metaclass=BlocksMeta):
         event_data: EventData | None = None,
         in_event_listener: bool = False,
         state: SessionState | None = None,
+        oauth_token: oauth.OAuthToken | None = None,
     ):
         """
         Calls function with given index and preprocessed input, and measures process time.
@@ -1614,6 +1674,7 @@ class Blocks(BlockContext, BlocksEvents, metaclass=BlocksMeta):
                 request,  # type: ignore
                 event_data,  # type: ignore
                 component_props=component_props,
+                token=oauth_token,
             )
             progress_tracker = (
                 processed_input[progress_index] if progress_index is not None else None
@@ -1675,8 +1736,9 @@ class Blocks(BlockContext, BlocksEvents, metaclass=BlocksMeta):
                 serialized_input = client_utils.traverse(
                     inputs[i],
                     format_file,
-                    lambda s: client_utils.is_filepath(s)
-                    or client_utils.is_http_url_like(s),
+                    lambda s: (
+                        client_utils.is_filepath(s) or client_utils.is_http_url_like(s)
+                    ),
                 )
             else:
                 serialized_input = inputs[i]
@@ -1735,6 +1797,58 @@ Received inputs:
     [{received}]"""
             )
 
+    @staticmethod
+    def _format_processing_error(
+        block_fn: BlockFunction,
+        index: int,
+        block: Block,
+        value: Any,
+        is_input: bool,
+        original_error: Exception,
+    ) -> str:
+        name = (
+            f' (named "{block_fn.name}")'
+            if block_fn.name and block_fn.name != "<lambda>"
+            else ""
+        )
+        blocks = block_fn.inputs if is_input else block_fn.outputs
+        components_list = ", ".join(b.get_block_name() for b in blocks)
+
+        value_repr = repr(value)
+        if len(value_repr) > 200:
+            value_repr = value_repr[:200] + "..."
+
+        kind = "input" if is_input else "output"
+        stage = "preprocess" if is_input else "postprocess"
+        verb = "passed to" if is_input else "returned from"
+
+        method = getattr(block, "preprocess" if is_input else "postprocess", None)
+        expected_type = None
+        if method is not None:
+            try:
+                params = list(inspect.signature(method).parameters.values())
+                if params and params[0].annotation is not inspect.Parameter.empty:
+                    annotation = params[0].annotation
+                    expected_type = (
+                        annotation
+                        if isinstance(annotation, str)
+                        else getattr(annotation, "__name__", str(annotation))
+                    )
+            except (ValueError, TypeError):
+                expected_type = None
+
+        expected_clause = (
+            f"Expected a `{expected_type}`, but the" if expected_type else "The"
+        )
+        return (
+            f"Could not {stage} {kind} component at index {index} "
+            f"(a `{block.get_block_name()}` component) of the event handler{name} "
+            f"with {kind} components: [{components_list}].\n\n"
+            f"{expected_clause} value {verb} the event handler was: {value_repr} "
+            f"(of type `{type(value).__name__}`).\n\n"
+            f"Original error: {type(original_error).__name__}: {original_error}"
+        )
+
     async def preprocess_data(
         self,
         block_fn: BlockFunction,
@@ -1765,11 +1879,14 @@ Received inputs:
                     inputs[i].get("value", None) if is_prop_input else inputs[i]
                 )
 
-                inputs_cached = await processing_utils.async_move_files_to_cache(
-                    value_to_process,
-                    block,
-                    check_in_upload_folder=not explicit_call,
-                )
+                from gradio.profiling import trace_phase
+
+                async with trace_phase("preprocess_move_to_cache"):
+                    inputs_cached = await processing_utils.async_move_files_to_cache(
+                        value_to_process,
+                        block,
+                        check_in_upload_folder=not explicit_call,
+                    )
                 if getattr(block, "data_model", None) and inputs_cached is not None:
                     data_model = cast(
                         Union[GradioModel, GradioRootModel], block.data_model
@@ -1787,7 +1904,23 @@ Received inputs:
                 state._update_value_in_config(block._id, inputs_serialized)
 
                 if block_fn.preprocess:
-                    processed_value = block.preprocess(inputs_cached)
+                    try:
+                        processed_value = await anyio.to_thread.run_sync(
+                            block.preprocess, inputs_cached, limiter=self.limiter
+                        )
+                    except Error:
+                        raise
+                    except Exception as err:
+                        raise ComponentProcessingError(
+                            self._format_processing_error(
+                                block_fn,
+                                i,
+                                block,
+                                value_to_process,
+                                is_input=True,
+                                original_error=err,
+                            )
+                        ) from err
                 else:
                     processed_value = inputs_serialized
 
@@ -1849,6 +1982,8 @@ Received inputs:
         predictions: list | dict,
         state: SessionState | None,
     ) -> list[Any]:
+        from gradio.profiling import trace_phase
+
         state = state or SessionState(self)
         if (
             isinstance(predictions, dict)
@@ -1860,7 +1995,7 @@ Received inputs:
             predictions = [skip()] * len(block_fn.outputs)
         if isinstance(predictions, dict) and len(predictions) > 0:
             predictions = convert_component_dict_to_list(
-                [block._id for block in block_fn.outputs], predictions
+                list(block_fn.outputs), predictions
             )
 
         if len(block_fn.outputs) == 1 and not block_fn.batch:
@@ -1913,7 +2048,11 @@ Received inputs:
                     }
                     prediction_value["__type__"] = "update"
                 if utils.is_prop_update(prediction_value):
-                    kwargs = state[block._id].constructor_args.copy()
+                    # The output block may be absent from the session config if
+                    # the app was hot-reloaded mid-run and this component was
+                    # added by the reload; fall back to the block's own args.
+                    base_block = state.get(block._id, block)
+                    kwargs = base_block.constructor_args.copy()
                     kwargs.update(prediction_value)
                     kwargs.pop("value", None)
                     kwargs.pop("__type__")
@@ -1937,33 +2076,50 @@ Received inputs:
                         )
                     if block._id in state:
                         block = state[block._id]
-                    prediction_value = block.postprocess(prediction_value)
+                    try:
+                        prediction_value = await anyio.to_thread.run_sync(
+                            block.postprocess, prediction_value, limiter=self.limiter
+                        )
+                    except Error:
+                        raise
+                    except Exception as err:
+                        raise ComponentProcessingError(
+                            self._format_processing_error(
+                                block_fn,
+                                i,
+                                block,
+                                predictions[i],
+                                is_input=False,
+                                original_error=err,
+                            )
+                        ) from err
                     if isinstance(prediction_value, (GradioModel, GradioRootModel)):
                         prediction_value_serialized = prediction_value.model_dump()
                     else:
                         prediction_value_serialized = prediction_value
-                    prediction_value_serialized = (
-                        await processing_utils.async_move_files_to_cache(
-                            prediction_value_serialized,
-                            block,
-                            postprocess=True,
+                    async with trace_phase("postprocess_update_state_in_config"):
+                        prediction_value_serialized = (
+                            await processing_utils.async_move_files_to_cache(
+                                prediction_value_serialized,
+                                block,
+                                postprocess=True,
+                            )
                         )
-                    )
-                    if block._id not in state:
-                        state[block._id] = block
-                    state._update_value_in_config(
-                        block._id, prediction_value_serialized
-                    )
+                        if block._id not in state:
+                            state[block._id] = block
+                        state._update_value_in_config(
+                            block._id, prediction_value_serialized
+                        )
                 elif not block_fn.postprocess:
                     if block._id not in state:
                         state[block._id] = block
                     state._update_value_in_config(block._id, prediction_value)
-
-                outputs_cached = await processing_utils.async_move_files_to_cache(
-                    prediction_value,
-                    block,
-                    postprocess=True,
-                )
+                async with trace_phase("postprocess_move_to_cache"):
+                    outputs_cached = await processing_utils.async_move_files_to_cache(
+                        prediction_value,
+                        block,
+                        postprocess=True,
+                    )
                 output.append(outputs_cached)
 
         return output
@@ -1991,7 +2147,14 @@ Received inputs:
                 and not utils.is_prop_update(data[i])
             ):
                 if final:
-                    stream_run[output_id].end_stream()
+                    # Nothing to finalize if this output never opened a stream —
+                    # the session may have been dropped on disconnect, or every
+                    # chunk before this one may have been a prop update. Falling
+                    # through would leave `first_chunk` true and build a fresh
+                    # stream that nothing ever ends.
+                    if (existing := stream_run.get(output_id)) is None:
+                        continue
+                    existing.end_stream()
                 first_chunk = output_id not in stream_run
                 binary_data, output_data = await block.stream_output(
                     data[i],
@@ -2036,6 +2199,10 @@ Received inputs:
         if first_run:
             self.pending_diff_streams[session_hash][run] = [None] * len(data)
         last_diffs = self.pending_diff_streams[session_hash][run]
+        if len(last_diffs) < len(block_fn.outputs):
+            # The number of outputs can grow mid-run if the app was
+            # hot-reloaded while this function was generating
+            last_diffs.extend([None] * (len(block_fn.outputs) - len(last_diffs)))
 
         for i in range(len(block_fn.outputs)):
             if final:
@@ -2069,6 +2236,7 @@ Received inputs:
         simple_format: bool = False,
         explicit_call: bool = False,
         root_path: str | None = None,
+        oauth_token: oauth.OAuthToken | None = None,
     ) -> dict[str, Any]:
         """
         Processes API calls from the frontend. First preprocesses the data,
@@ -2105,6 +2273,7 @@ Received inputs:
             max_batch_size = block_fn.max_batch_size
             batch_sizes = [len(inp) for inp in inputs]
             batch_size = batch_sizes[0]
+            manual_cache_used = False
             if inspect.isasyncgenfunction(block_fn.fn) or inspect.isgeneratorfunction(
                 block_fn.fn
             ):
@@ -2121,16 +2290,19 @@ Received inputs:
                 await self.preprocess_data(block_fn, list(i), state, explicit_call)
                 for i in zip(*inputs, strict=False)
             ]
-            result = await self.call_function(
-                block_fn,
-                list(zip(*inputs, strict=False)),
-                None,
-                request,
-                event_id,
-                event_data,
-                in_event_listener,
-                state,
-            )
+            with TrackManualCacheUsage():
+                result = await self.call_function(
+                    block_fn,
+                    list(zip(*inputs, strict=False)),
+                    None,
+                    request,
+                    event_id,
+                    event_data,
+                    in_event_listener,
+                    state,
+                    oauth_token,
+                )
+                manual_cache_used = used_manual_cache()
             preds = result["prediction"]
             data = [
                 await self.postprocess_data(block_fn, list(o), state)
@@ -2141,26 +2313,37 @@ Received inputs:
             data = list(zip(*data, strict=False))
             is_generating, iterator = None, None
         else:
+            from gradio.profiling import trace_phase
+
             old_iterator = iterator
+            manual_cache_used = False
             if old_iterator:
                 inputs = []
             else:
-                inputs = await self.preprocess_data(
-                    block_fn, inputs, state, explicit_call
-                )
+                async with trace_phase("preprocess"):
+                    inputs = await self.preprocess_data(
+                        block_fn, inputs, state, explicit_call
+                    )
             was_generating = old_iterator is not None
-            result = await self.call_function(
-                block_fn,
-                inputs,
-                old_iterator,
-                request,
-                event_id,
-                event_data,
-                in_event_listener,
-                state,
-            )
+            with TrackManualCacheUsage():
+                async with trace_phase("fn_call"):
+                    result = await self.call_function(
+                        block_fn,
+                        inputs,
+                        old_iterator,
+                        request,
+                        event_id,
+                        event_data,
+                        in_event_listener,
+                        state,
+                        oauth_token,
+                    )
+                manual_cache_used = used_manual_cache()
 
-            data = await self.postprocess_data(block_fn, result["prediction"], state)
+            async with trace_phase("postprocess"):
+                data = await self.postprocess_data(
+                    block_fn, result["prediction"], state
+                )
             if state:
                 changed_state_ids = [
                     state_id
@@ -2175,33 +2358,40 @@ Received inputs:
             is_generating, iterator = result["is_generating"], result["iterator"]
             if is_generating or was_generating:
                 run = id(old_iterator) if was_generating else id(iterator)
-                data = await self.handle_streaming_outputs(
-                    block_fn,
-                    data,
-                    session_hash=session_hash,
-                    run=run,
-                    root_path=root_path,
-                    final=not is_generating,
-                )
-                data = self.handle_streaming_diffs(
-                    block_fn,
-                    data,
-                    session_hash=session_hash,
-                    run=run,
-                    final=not is_generating,
-                    simple_format=simple_format,
-                )
+                async with trace_phase("streaming_diff"):
+                    data = await self.handle_streaming_outputs(
+                        block_fn,
+                        data,
+                        session_hash=session_hash,
+                        run=run,
+                        root_path=root_path,
+                        final=not is_generating,
+                    )
+                    data = self.handle_streaming_diffs(
+                        block_fn,
+                        data,
+                        session_hash=session_hash,
+                        run=run,
+                        final=not is_generating,
+                        simple_format=simple_format,
+                    )
 
-        block_fn.total_runtime += result["duration"]
-        block_fn.total_runs += 1
+        if not manual_cache_used:
+            block_fn.total_runtime += result["duration"]
+            block_fn.total_runs += 1
         output = {
             "data": data,
             "is_generating": is_generating,
             "iterator": iterator,
             "duration": result["duration"],
-            "average_duration": block_fn.total_runtime / block_fn.total_runs,
+            "average_duration": (
+                block_fn.total_runtime / block_fn.total_runs
+                if block_fn.total_runs > 0
+                else None
+            ),
             "render_config": None,
             "changed_state_ids": changed_state_ids,
+            "used_cache": "partial" if manual_cache_used else None,
         }
         if block_fn.renderable and state:
             output["render_config"] = state.blocks_config.get_config(
@@ -2261,6 +2451,7 @@ Received inputs:
             "enable_queue": True,  # launch attributes
             "show_error": getattr(self, "show_error", False),
             "footer_links": getattr(self, "footer_links", []),
+            "run_history": getattr(self, "run_history", True),
             "is_colab": utils.colab_check(),
             "max_file_size": getattr(self, "max_file_size", None),
             "stylesheets": getattr(self, "stylesheets", []),
@@ -2295,7 +2486,7 @@ Received inputs:
         }
         config.update(self.default_config.get_config())  # type: ignore
         config["connect_heartbeat"] = utils.connect_heartbeat(
-            config, self.blocks.values()
+            config, self.blocks.values(), self.fns.values()
         )
         return config
 
@@ -2487,8 +2678,11 @@ Received inputs:
         ssl_keyfile_password: str | None = None,
         ssl_verify: bool = True,
         quiet: bool = False,
-        footer_links: list[Literal["api", "gradio", "settings"] | dict[str, str]]
+        footer_links: list[
+            Literal["api", "gradio", "settings", "runs"] | dict[str, str]
+        ]
         | None = None,
+        run_history: bool | None = None,
         allowed_paths: list[str] | None = None,
         blocked_paths: list[str] | None = None,
         root_path: str | None = None,
@@ -2497,7 +2691,8 @@ Received inputs:
         share_server_address: str | None = None,
         share_server_protocol: Literal["http", "https"] | None = None,
         share_server_tls_certificate: str | None = None,
-        auth_dependency: Callable[[fastapi.Request], str | None] | None = None,
+        auth_dependency: Callable[[fastapi.Request], str | None | Awaitable[str | None]]
+        | None = None,
         max_file_size: str | int | None = None,
         enable_monitoring: bool | None = None,
         strict_cors: bool = True,
@@ -2506,6 +2701,8 @@ Received inputs:
         ssr_mode: bool | None = None,
         pwa: bool | None = None,
         mcp_server: bool | None = None,
+        num_workers: int | None = None,
+        _app: App | None = None,
         _frontend: bool = True,
         i18n: I18n | None = None,
         theme: Theme | str | None = None,
@@ -2538,7 +2735,8 @@ Received inputs:
             ssl_keyfile_password: If a password is provided, will use this with the ssl certificate for https.
             ssl_verify: If False, skips certificate validation which allows self-signed certificates to be used.
             quiet: If True, suppresses most print statements.
-            footer_links: The links to display in the footer of the app. Accepts a list, where each element of the list must be one of "api", "gradio", or "settings" corresponding to the API docs, "built with Gradio", and settings pages respectively. If None, all three links will be shown in the footer. An empty list means that no footer is shown.
+            footer_links: The links to display in the footer of the app. Accepts a list, where each element of the list must be one of "api", "gradio", "settings", or "runs" corresponding to the API docs, "built with Gradio", the settings page, and the run history page respectively. The "runs" link only appears if `run_history` is True and the browser has at least one saved run for this app. If None, all four links will be shown in the footer. An empty list means that no footer is shown.
+            run_history: If True, users can review and reload calls from the run history page at /gradio_api/runs. Runs are saved privately in the browser by default; from that page, a user can instead connect a Hugging Face bucket and save future runs there. Browser history is scoped to the logged-in user if the app uses `auth`. If False, nothing is recorded, the run history page is disabled, and any runs previously saved by this app are deleted from the browser. If None, will use the GRADIO_RUN_HISTORY environment variable or default to True.
             allowed_paths: List of complete filepaths or parent directories that gradio is allowed to serve. Must be absolute paths. Warning: if you provide directories, any files in these directories or their subdirectories are accessible to all users of your app. Can be set by comma separated environment variable GRADIO_ALLOWED_PATHS. These files are generally assumed to be secure and will be displayed in the browser when possible.
             blocked_paths: List of complete filepaths or parent directories that gradio is not allowed to serve (i.e. users of your app are not allowed to access). Must be absolute paths. Warning: takes precedence over `allowed_paths` and all other directories exposed by Gradio by default. Can be set by comma separated environment variable GRADIO_BLOCKED_PATHS.
             root_path: The root path (or "mount point") of the application, if it's not served from the root ("/") of the domain. Often used when the application is behind a reverse proxy that forwards requests to the application. For example, if the application is served at "https://example.com/myapp", the `root_path` should be set to "/myapp". A full URL beginning with http:// or https:// can be provided, which will be used as the root path in its entirety. Can be set by environment variable GRADIO_ROOT_PATH. Defaults to "".
@@ -2555,10 +2753,11 @@ Received inputs:
             pwa: If True, the Gradio app will be set up as an installable PWA (Progressive Web App). If set to None (default behavior), then the PWA feature will be enabled if this Gradio app is launched on Spaces, but not otherwise.
             i18n: An I18n instance containing custom translations, which are used to translate strings in our components (e.g. the labels of components or Markdown strings). This feature can only be used to translate static text in the frontend, not values in the backend.
             mcp_server: If True, the Gradio app will be set up as an MCP server and documented functions will be added as MCP tools. If None (default behavior), then the GRADIO_MCP_SERVER environment variable will be used to determine if the MCP server should be enabled.
+            num_workers: Number of background workers to launch in the background to serve file I/O and static assets. This offloads traffic from the main server and reduces latency. Only has an effect if ssr mode is set.
             theme: A Theme object or a string representing a theme. If a string, will look for a built-in theme with that name (e.g. "soft" or "default"), or will attempt to load a theme from the Hugging Face Hub (e.g. "gradio/monochrome"). If None, will use the Default theme.
             css: Custom css as a code string. This css will be included in the demo webpage.
             css_paths: Custom css as a pathlib.Path to a css file or a list of such paths. This css files will be read, concatenated, and included in the demo webpage. If the `css` parameter is also set, the css from `css` will be included first.
-            js: Custom js as a code string. The js code will automatically be executed when the page loads. For more flexibility, use the head parameter to insert js inside <script> tags.
+            js: Custom JavaScript provided as either a function or a raw code string. A function is automatically invoked; otherwise the code is executed directly when the page loads. To run JavaScript as a document-level `<script>` tag, use the `head` parameter.
             head: Custom html code to insert into the head of the demo webpage. This can be used to add custom meta tags, multiple scripts, stylesheets, etc. to the page.
             head_paths: Custom html code as a pathlib.Path to a html file or a list of such paths. This html files will be read, concatenated, and included in the head of the demo webpage. If the `head` parameter is also set, the html from `head` will be included first.
         Returns:
@@ -2641,9 +2840,18 @@ Received inputs:
             self.root_path = os.environ.get("GRADIO_ROOT_PATH", "")
         else:
             self.root_path = root_path
-        self.footer_links = (
-            footer_links if footer_links is not None else ["api", "gradio", "settings"]
+        self.run_history = (
+            os.environ.get("GRADIO_RUN_HISTORY", "True").lower() == "true"
+            if run_history is None
+            else run_history
         )
+        self.footer_links = (
+            footer_links
+            if footer_links is not None
+            else ["api", "gradio", "settings", "runs"]
+        )
+        if not self.run_history:
+            self.footer_links = [link for link in self.footer_links if link != "runs"]
 
         if allowed_paths:
             self.allowed_paths = allowed_paths
@@ -2687,15 +2895,111 @@ Received inputs:
         self.config = self.get_config_file()
 
         self.ssr_mode = self._resolve_ssr_mode(ssr_mode, disable_when_multi_page=False)
+
+        # Resolve num_workers early so we can pre-compute worker ports
+        # and pass them to the Node proxy at startup.
+        resolved_num_workers = num_workers
+        if resolved_num_workers is None:
+            env_val = os.environ.get("GRADIO_NUM_WORKERS")
+            if env_val is not None:
+                resolved_num_workers = int(env_val)
+        static_worker_count = (
+            resolved_num_workers
+            if resolved_num_workers is not None
+            and resolved_num_workers >= 1
+            and self.auth is None
+            and auth_dependency is None
+            else 0
+        )
+
+        self._node_is_proxy = False
+        # Set when SSR was requested but Node couldn't serve, and we fell back to
+        # serving the app from Python without SSR.
+        self._ssr_degraded = False
+        static_worker_ports: list[int] = []
+        # Stashed kwargs for the deferred production Node proxy start.
+        # When set, the user-facing Node front proxy is started after
+        # Python (and any static workers) are listening — see the
+        # `if _pending_node_proxy_kwargs is not None:` block further
+        # down for the rationale.
+        _pending_node_proxy_kwargs: dict | None = None
+
         if self.ssr_mode:
             self.node_path = os.environ.get("GRADIO_NODE_PATH", get_node_path())
-            self.node_server_name, self.node_process, self.node_port = (
-                start_node_server(
-                    server_name=node_server_name,
-                    server_port=node_port,
-                    node_path=self.node_path,
+            is_dev_mode = os.getenv("GRADIO_LOCAL_DEV_MODE") is not None
+
+            if is_dev_mode:
+                # Dev mode: vite dev server on 9876, Python is the front.
+                # Keep the old architecture (Python proxies to vite).
+                self.node_server_name, self.node_process, self.node_port = (
+                    start_node_server(
+                        server_name=node_server_name,
+                        server_port=node_port,
+                        node_path=self.node_path,
+                        debug=debug,
+                    )
                 )
-            )
+            elif self.node_path:
+                # Production: Node will be the front proxy on the user-facing
+                # port and Python will be on an internal port behind it.
+                # We DEFER actually starting Node until after Python (and any
+                # static workers) are listening — otherwise the user-facing
+                # port opens before the proxy's targets exist, and any
+                # traffic that arrives during the startup window receives a
+                # 502 from the proxy (observed on HF Spaces after #13366).
+                from gradio.http_server import INITIAL_PORT_VALUE, TRY_NUM_PORTS
+
+                python_host = server_name or os.getenv(
+                    "GRADIO_SERVER_NAME", "127.0.0.1"
+                )
+
+                user_port = node_port
+                if user_port is None:
+                    env_node_port = os.getenv("GRADIO_NODE_SERVER_PORT")
+                    if env_node_port is not None:
+                        user_port = int(env_node_port)
+                if user_port is None and server_port is not None:
+                    user_port = server_port
+
+                preferred_start = (
+                    user_port if user_port is not None else INITIAL_PORT_VALUE
+                )
+
+                # Reserve a free internal port for Python; Node will proxy
+                # non-static traffic here once it starts.
+                python_internal_port = _find_free_port(
+                    python_host, start=preferred_start + 1, try_count=TRY_NUM_PORTS
+                )
+
+                if static_worker_count:
+                    worker_start = python_internal_port + 1
+                    static_worker_ports = [
+                        worker_start + i for i in range(static_worker_count)
+                    ]
+
+                # Commit Python to the internal port now (so it can bind
+                # without contending with the user-facing port) and stash
+                # the Node start kwargs for later. We also commit to proxy
+                # mode here; if Node ultimately fails to start, Python is
+                # left listening on the internal port — a degraded but
+                # working state we surface via a warning below.
+                server_port = python_internal_port
+                _pending_node_proxy_kwargs = {
+                    "server_name": node_server_name or python_host,
+                    "server_port": user_port,
+                    "node_path": self.node_path,
+                    "python_port": python_internal_port,
+                    "python_host": python_host,
+                    "static_worker_ports": static_worker_ports,
+                    "debug": debug,
+                }
+                self.node_server_name = self.node_port = self.node_process = None
+            else:
+                # SSR was requested but Node isn't available; fall through to
+                # the Python-only path (matches the original behaviour when
+                # start_node_server returned None).
+                static_worker_ports = []
+                self.node_server_name = self.node_port = self.node_process = None
         else:
             self.node_server_name = self.node_port = self.node_process = None
 
@@ -2706,11 +3010,12 @@ Received inputs:
 
         self.server_app = self.app = App.create_app(
             self,
+            app=_app,
             auth_dependency=auth_dependency,
             app_kwargs=app_kwargs,
             strict_cors=strict_cors,
-            ssr_mode=self.ssr_mode,
             mcp_server=mcp_server,
+            debug=debug,
         )
         if self.mcp_error and not quiet:
             print(self.mcp_error)
@@ -2760,15 +3065,112 @@ Received inputs:
                 if self.local_url.startswith("https") or self.is_colab
                 else "http"
             )
-            if not self.is_colab and not quiet:
-                s = (
-                    "* Running on local URL:  {}://{}:{}, with SSR ⚡ (experimental, to disable set `ssr_mode=False` in `launch()`)"
-                    if self.ssr_mode
-                    else "* Running on local URL:  {}://{}:{}"
-                )
-                print(s.format(self.protocol, self.server_name, self.server_port))
 
             self._queue.set_server_app(self.server_app)
+
+            # Static worker pool for offloading file serving / uploads
+            if static_worker_count:
+                from gradio.routes import (
+                    BUILD_PATH_LIB,
+                    STATIC_PATH_LIB,
+                )
+                from gradio.static_server import StaticServerConfig, StaticWorkerPool
+
+                static_config = StaticServerConfig(
+                    build_path=str(BUILD_PATH_LIB),
+                    static_path=str(STATIC_PATH_LIB),
+                    uploaded_file_dir=self.server_app.uploaded_file_dir,
+                    allowed_paths=self.allowed_paths,
+                    blocked_paths=self.blocked_paths,
+                    max_file_size=self.max_file_size,
+                    favicon_path=str(self.favicon_path) if self.favicon_path else None,
+                )
+                # When Node is the front proxy, worker ports were pre-computed above.
+                # Otherwise, compute them here.
+                if self._node_is_proxy and static_worker_ports:
+                    worker_ports = static_worker_ports
+                else:
+                    worker_start = self.server_port + 1
+                    if self.node_port is not None:
+                        worker_start = max(worker_start, self.node_port + 1)
+                    worker_ports = [
+                        worker_start + i for i in range(static_worker_count)
+                    ]
+                self._static_worker_pool = StaticWorkerPool(
+                    num_workers=static_worker_count,
+                    config=static_config,
+                    ports=worker_ports,
+                )
+                self._static_worker_pool.start()
+
+                if not quiet:
+                    print(
+                        f"* Static file workers: {static_worker_count} processes on ports {self._static_worker_pool.ports}"
+                    )
+
+            # Now that Python (and any static workers) are listening,
+            # start the Node front proxy. Opening the user-facing port
+            # here — rather than before Python is up — closes the race
+            # window in which the proxy port was reachable but every
+            # request resolved to a 502 from an unreachable upstream.
+            if _pending_node_proxy_kwargs is not None:
+                self.node_server_name, self.node_process, self.node_port = (
+                    start_node_server(
+                        **_pending_node_proxy_kwargs,
+                        on_shutdown=self._end_streaming_responses,
+                    )
+                )
+                if self.node_process is not None and self.node_port is not None:
+                    self._node_is_proxy = True
+                    url_host = (
+                        "localhost"
+                        if self.server_name == "0.0.0.0"
+                        else self.server_name
+                    )
+                    self.local_url = f"http://{url_host}:{self.node_port}/"
+                    self.local_api_url = f"{self.local_url.rstrip('/')}{API_PREFIX}/"
+                    if self.mcp_server_obj:
+                        self.mcp_server_obj._local_url = self.local_url
+                else:
+                    # Python is listening on an internal port that only Node was
+                    # ever going to route to, so with Node gone the app is
+                    # unreachable at the address the user (or the Space's health
+                    # check) is watching. Move Python onto the user-facing port and
+                    # serve without SSR: worse than SSR, far better than dead.
+                    self._ssr_degraded = self._serve_without_node_proxy(
+                        user_port=_pending_node_proxy_kwargs["server_port"],
+                        ssl_keyfile=ssl_keyfile,
+                        ssl_certfile=ssl_certfile,
+                        ssl_keyfile_password=ssl_keyfile_password,
+                    )
+                    if not quiet:
+                        if self._ssr_degraded:
+                            warnings.warn(
+                                "Failed to start Node front proxy for SSR; serving "
+                                f"without SSR on {self.local_url} "
+                                "(see the Node server output above)."
+                            )
+                        else:
+                            warnings.warn(
+                                "Failed to start Node front proxy for SSR, and the "
+                                f"user-facing port could not be taken over; Gradio is "
+                                f"reachable only on the internal Python port "
+                                f":{self.server_port}. See the Node server output "
+                                "above, or set ssr_mode=False."
+                            )
+
+            if not self.is_colab and not quiet:
+                if self._node_is_proxy and self.node_port is not None:
+                    print(
+                        f"* Running on local URL:  {self.protocol}://{self.server_name}:{self.node_port}, with SSR ⚡ (Node proxy -> Python :{self.server_port})"
+                    )
+                elif self.ssr_mode and not self._ssr_degraded:
+                    print(
+                        f"* Running on local URL:  {self.protocol}://{self.server_name}:{self.server_port}, with SSR ⚡ (dev mode)"
+                    )
+                else:
+                    s = "* Running on local URL:  {}://{}:{}"
+                    print(s.format(self.protocol, self.server_name, self.server_port))
 
             resp = httpx.get(
                 f"{self.local_api_url}startup-events",
@@ -2843,7 +3245,7 @@ Received inputs:
                 print(f"* Running on public URL: {self.share_url}")
                 if not (quiet):
                     print(
-                        "\nThis share link expires in 1 week. For free permanent hosting and GPU upgrades, run `gradio deploy` from the terminal in the working directory to deploy to Hugging Face Spaces (https://huggingface.co/spaces)"
+                        "\nThis share link is temporary and will last for up to 1 week (best effort). For free permanent hosting and GPU upgrades, run `gradio deploy` from the terminal in the working directory to deploy to Hugging Face Spaces (https://huggingface.co/spaces)"
                     )
             except Exception as e:
                 if self.analytics_enabled:
@@ -2854,6 +3256,8 @@ Received inputs:
                     print(
                         f"\nCould not create share link. Checksum mismatch for file: {BINARY_PATH}."
                     )
+                elif isinstance(e, ShareCertificateWriteError):
+                    print(f"\nCould not create share link. {e}")
                 elif Path(BINARY_PATH).exists():
                     print(
                         "\nCould not create share link. Please check your internet connection or our status page: https://status.gradio.app."
@@ -2894,6 +3298,15 @@ Received inputs:
 
                 elif self.is_colab:
                     # modified from /usr/local/lib/python3.7/dist-packages/google/colab/output/_util.py within Colab environment
+                    # In production SSR mode, Node owns the user-facing port and
+                    # proxies to Python on ``self.server_port``. Exposing the
+                    # Python port here bypasses SSR and gives the browser a config
+                    # rooted at Colab's internal runtime hostname.
+                    colab_port = (
+                        self.node_port
+                        if self._node_is_proxy and self.node_port is not None
+                        else self.server_port
+                    )
                     code = """(async (port, path, width, height, cache, element) => {
                         if (!google.colab.kernel.accessAllowed && !cache) {
                             return;
@@ -2919,7 +3332,7 @@ Received inputs:
                         iframe.style.border = 0;
                         element.appendChild(iframe);
                     })""" + "({port}, {path}, {width}, {height}, {cache}, window.element)".format(
-                        port=json.dumps(self.server_port),
+                        port=json.dumps(colab_port),
                         path=json.dumps("/"),
                         width=json.dumps(self.width),
                         height=json.dumps(self.height),
@@ -3035,6 +3448,94 @@ Received inputs:
             data = {"integration": analytics_integration}
             analytics.integration_analytics(data)
 
+    def _serve_without_node_proxy(
+        self,
+        user_port: int | None,
+        ssl_keyfile: str | None = None,
+        ssl_certfile: str | None = None,
+        ssl_keyfile_password: str | None = None,
+    ) -> bool:
+        """Moves the running Python server from its internal port onto the
+        user-facing port, for when the Node front proxy failed to start.
+
+        In proxy mode Python deliberately binds an internal port and lets Node own
+        the user-facing one. If Node never comes up, that leaves the app answering
+        on a port nobody is asking about — on Spaces the container is judged by the
+        user-facing port, so the app is reported as crashed even though Python is
+        healthy. Rebinding there serves the app client-side rendered instead.
+
+        Returns whether the move happened; the existing server keeps running if the
+        user-facing port could not be taken over.
+        """
+        from gradio import http_server
+        from gradio.http_server import INITIAL_PORT_VALUE, TRY_NUM_PORTS
+
+        internal_port = self.server_port
+        old_server = self.server
+        bind_host = "127.0.0.1" if self.server_name == "0.0.0.0" else self.server_name
+
+        def serve_on(port: int | None):
+            return http_server.start_server(
+                app=self.app,
+                server_name=self.server_name,
+                server_port=port,
+                ssl_keyfile=ssl_keyfile,
+                ssl_certfile=ssl_certfile,
+                ssl_keyfile_password=ssl_keyfile_password,
+            )
+
+        # Check the port before giving up the one we have. The two servers can't
+        # overlap: they share an app, so the second would run its lifespan a second
+        # time and the first's shutdown would delete the app's cache files from
+        # under it.
+        if user_port is not None:
+            if not _port_is_free(bind_host, user_port):
+                return False
+            target_port: int | None = user_port
+        else:
+            try:
+                target_port = _find_free_port(
+                    bind_host, start=INITIAL_PORT_VALUE, try_count=TRY_NUM_PORTS
+                )
+            except OSError:
+                return False
+
+        if old_server is not None:
+            old_server.close()
+
+        try:
+            server_name, server_port, local_url, server = serve_on(target_port)
+        except (OSError, ServerFailedToStartError):
+            # Lost the race for the user-facing port after releasing ours, so go
+            # back to the internal one rather than leave nothing listening.
+            server_name, server_port, local_url, server = serve_on(internal_port)
+            self.server = server
+            return False
+
+        self.server_name = server_name
+        self.server_port = server_port
+        self.local_url = local_url
+        self.local_api_url = f"{local_url.rstrip('/')}{API_PREFIX}/"
+        self.server = server
+        self.protocol = (
+            "https" if local_url.startswith("https") or self.is_colab else "http"
+        )
+        if self.mcp_server_obj:
+            self.mcp_server_obj._local_url = local_url
+        return True
+
+    def _end_streaming_responses(self) -> None:
+        """
+        Ends the session heartbeat streams. The Node front proxy waits for the
+        connections it is serving before exiting, and these are those connections.
+
+        This runs on the main thread while the event loop runs in uvicorn's, so
+        the set() only lands on the loop's next wake; uvicorn's main loop ticks
+        every 100ms, which is what keeps shutdown prompt. `server_app` rather
+        than `app`, because `queue()` rebinds `app` but not the served instance.
+        """
+        self.server_app.stop_event.set()
+
     def close(self, verbose: bool = True) -> None:
         """
         Closes the Interface that was launched and frees the port.
@@ -3043,6 +3544,12 @@ Received inputs:
             return
 
         try:
+            if (
+                hasattr(self, "_static_worker_pool")
+                and self._static_worker_pool is not None
+            ):
+                self._static_worker_pool.shutdown()
+                self._static_worker_pool = None
             self._queue.close()
             # set this before closing server to shut down heartbeats
             self.is_running = False
@@ -3105,6 +3612,9 @@ Received inputs:
                     Literal["public", "private", "undocumented"], fn.api_visibility
                 ),
             }
+            oauth_token_kind = utils.oauth_token_requirement(fn.fn)
+            if oauth_token_kind is not None:
+                dependency_info["oauth_token"] = oauth_token_kind
             fn_info = utils.get_function_params(fn.fn)
             if fn.api_description is False:
                 dependency_info["description"] = ""

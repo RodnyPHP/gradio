@@ -1,17 +1,16 @@
 <script lang="ts">
-	import { createEventDispatcher } from "svelte";
 	import { IconButton } from "@gradio/atoms";
 	import { Clear } from "@gradio/icons";
 
-	const dispatch = createEventDispatcher();
+	let { onremove_image }: { onremove_image?: () => void } = $props();
 </script>
 
 <div>
 	<IconButton
 		Icon={Clear}
 		label="Remove Image"
-		on:click={(event) => {
-			dispatch("remove_image");
+		onclick={(event) => {
+			onremove_image?.();
 			event.stopPropagation();
 		}}
 	/>

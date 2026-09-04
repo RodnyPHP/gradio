@@ -1,4 +1,4 @@
-<script context="module" lang="ts">
+<script module lang="ts">
 	export { default as BaseCode } from "./shared/Code.svelte";
 	export { default as BaseCopy } from "./shared/Copy.svelte";
 	export { default as BaseDownload } from "./shared/Download.svelte";
@@ -22,8 +22,14 @@
 	let dark_mode = gradio.shared.theme === "dark";
 
 	let label = $derived(gradio.shared.label || gradio.i18n("code.code"));
+	// gr.Code() with no value serializes to `undefined`. Svelte 5 forbids
+	// `bind:value={undefined}` when the child's `value` prop has a fallback
+	// default (`$bindable("")`), throwing `props_invalid_value`, which aborts
+	// hydration and breaks event wiring for the whole page. Coerce to "" so the
+	// binding below always has a defined value (mirrors Textbox/Index.svelte).
+	gradio.props.value = gradio.props.value ?? "";
 	let old_value = $state(gradio.props.value);
-	let first_change = true;
+	let first_change = $state(true);
 
 	$effect(() => {
 		if (first_change) {
@@ -88,9 +94,9 @@
 			show_line_numbers={gradio.props.show_line_numbers}
 			autocomplete={gradio.props.autocomplete}
 			readonly={!gradio.shared.interactive}
-			on:blur={() => gradio.dispatch("blur")}
-			on:focus={() => gradio.dispatch("focus")}
-			on:input={() => gradio.dispatch("input")}
+			onblur={() => gradio.dispatch("blur")}
+			onfocus={() => gradio.dispatch("focus")}
+			oninput={() => gradio.dispatch("input")}
 		/>
 	{/if}
 </Block>

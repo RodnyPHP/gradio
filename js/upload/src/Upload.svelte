@@ -1,38 +1,71 @@
 <script lang="ts">
-	import { createEventDispatcher, tick, getContext } from "svelte";
+	import { tick } from "svelte";
 	import type { FileData } from "@gradio/client";
 	import { prepare_files, type Client } from "@gradio/client";
 	import UploadProgress from "./UploadProgress.svelte";
-	import { create_drag } from "./utils";
+	import { create_drag, is_valid_mimetype } from "./utils";
 
 	const { drag, open_file_upload: _open_file_upload } = create_drag();
 
-	export let filetype: string | string[] | null = null;
-	export let dragging = false;
-	export let boundedheight = true;
-	export let center = true;
-	export let flex = true;
-	export let file_count: "single" | "multiple" | "directory" = "single";
-	export let disable_click = false;
-	export let root: string;
-	export let hidden = false;
-	export let format: "blob" | "file" = "file";
-	export let uploading = false;
-	export let show_progress = true;
-	export let max_file_size: number | null = null;
-	export let upload: Client["upload"];
-	export let stream_handler: Client["stream"];
-	export let icon_upload = false;
-	export let height: number | string | undefined = undefined;
-	export let aria_label: string | undefined = undefined;
-	export let upload_promise: Promise<(FileData | null)[]> | null = null;
+	let {
+		filetype = null,
+		dragging = $bindable(false),
+		boundedheight = true,
+		center = true,
+		flex = true,
+		file_count = "single",
+		disable_click = false,
+		root,
+		hidden = false,
+		format = "file",
+		uploading = $bindable(false),
+		show_progress = true,
+		max_file_size = null,
+		upload,
+		stream_handler,
+		icon_upload = false,
+		height = undefined,
+		aria_label = undefined,
+		tab_index = 0,
+		container_element = "button",
+		upload_promise = $bindable(),
+		onload,
+		onerror,
+		children
+	}: {
+		filetype?: string | string[] | null;
+		dragging?: boolean;
+		boundedheight?: boolean;
+		center?: boolean;
+		flex?: boolean;
+		file_count?: "single" | "multiple" | "directory";
+		disable_click?: boolean;
+		root: string;
+		hidden?: boolean;
+		format?: "blob" | "file";
+		uploading?: boolean;
+		show_progress?: boolean;
+		max_file_size?: number | null;
+		upload: Client["upload"];
+		stream_handler: Client["stream"];
+		icon_upload?: boolean;
+		height?: number | string | undefined;
+		aria_label?: string | undefined;
+		tab_index?: number;
+		container_element?: "button" | "div";
+		upload_promise?: Promise<(FileData | null)[]> | null;
+		onload?: (data: any) => void;
+		onerror?: (error: string) => void;
+		children?: import("svelte").Snippet;
+	} = $props();
 
 	export function open_upload(): void {
 		_open_file_upload();
 	}
-	let upload_id: string = "";
+
+	let upload_id = "";
 	let file_data: FileData[];
-	let accept_file_types: string | null;
+	let accept_file_types: string | null = $state(null);
 	let use_post_upload_validation: boolean | null = null;
 
 	const get_ios = (): boolean => {
@@ -43,9 +76,8 @@
 		return false;
 	};
 
-	$: ios = get_ios();
+	let ios = get_ios();
 
-	const dispatch = createEventDispatcher();
 	const validFileTypes = ["image", "video", "audio", "text", "file"];
 	const process_file_type = (type: string): string => {
 		if (ios && type.startsWith(".")) {
@@ -64,16 +96,18 @@
 		return "." + type;
 	};
 
-	$: if (filetype == null) {
-		accept_file_types = null;
-	} else if (typeof filetype === "string") {
-		accept_file_types = process_file_type(filetype);
-	} else if (ios && filetype.includes("file/*")) {
-		accept_file_types = "*";
-	} else {
-		filetype = filetype.map(process_file_type);
-		accept_file_types = filetype.join(", ");
-	}
+	$effect(() => {
+		if (filetype == null) {
+			accept_file_types = null;
+		} else if (typeof filetype === "string") {
+			accept_file_types = process_file_type(filetype);
+		} else if (ios && filetype.includes("file/*")) {
+			accept_file_types = "*";
+		} else {
+			const processed = filetype.map(process_file_type);
+			accept_file_types = processed.join(", ");
+		}
+	});
 
 	export function paste_clipboard(): void {
 		navigator.clipboard.read().then(async (items) => {
@@ -97,76 +131,42 @@
 		_open_file_upload();
 	}
 
-	function handle_upload(
+	async function handle_upload(
 		file_data: FileData[],
 		_upload_id?: string
 	): Promise<(FileData | null)[]> {
-		upload_promise = new Promise(async (resolve, rej) => {
-			await tick();
-			if (!_upload_id) {
-				upload_id = Math.random().toString(36).substring(2, 15);
-			} else {
-				upload_id = _upload_id;
-			}
+		if (!_upload_id) {
+			upload_id = Math.random().toString(36).substring(2, 15);
+		} else {
+			upload_id = _upload_id;
+		}
 
-			uploading = true;
-
+		await tick();
+		uploading = true;
+		upload_promise = new Promise(async (resolve) => {
 			try {
-				const _file_data = await upload(
-					file_data,
-					root,
-					upload_id,
-					max_file_size ?? Infinity
-				);
-				dispatch(
-					"load",
-					file_count === "single" ? _file_data?.[0] : _file_data
-				);
-				resolve(_file_data || []);
+				const _file_data =
+					(await upload(
+						file_data,
+						root,
+						upload_id,
+						max_file_size ?? Infinity
+					)) || [];
+				if (file_count === "single") {
+					if (_file_data[0] !== undefined) onload?.(_file_data[0]);
+				} else {
+					onload?.(_file_data);
+				}
+				resolve(_file_data);
 				uploading = false;
-				return _file_data || [];
 			} catch (e) {
-				dispatch("error", (e as Error).message);
+				onerror?.((e as Error).message);
 				uploading = false;
 				resolve([]);
 			}
 		});
 
 		return upload_promise;
-	}
-
-	function is_valid_mimetype(
-		file_accept: string | string[] | null,
-		uploaded_file_extension: string,
-		uploaded_file_type: string
-	): boolean {
-		if (
-			!file_accept ||
-			file_accept === "*" ||
-			file_accept === "file/*" ||
-			(Array.isArray(file_accept) &&
-				file_accept.some((accept) => accept === "*" || accept === "file/*"))
-		) {
-			return true;
-		}
-		let acceptArray: string[];
-		if (typeof file_accept === "string") {
-			acceptArray = file_accept.split(",").map((s) => s.trim());
-		} else if (Array.isArray(file_accept)) {
-			acceptArray = file_accept;
-		} else {
-			return false;
-		}
-
-		return (
-			acceptArray.includes(uploaded_file_extension) ||
-			acceptArray.some((type) => {
-				const [category] = type.split("/").map((s) => s.trim());
-				return (
-					type.endsWith("/*") && uploaded_file_type.startsWith(category + "/")
-				);
-			})
-		);
 	}
 
 	export async function load_files(
@@ -186,10 +186,7 @@
 				if (is_valid_file(file)) {
 					return true;
 				}
-				dispatch(
-					"error",
-					`Invalid file type: ${file.name}. Only ${filetype} allowed.`
-				);
+				onerror?.(`Invalid file type: ${file.name}. Only ${filetype} allowed.`);
 				return false;
 			});
 
@@ -229,31 +226,29 @@
 
 	async function load_files_from_upload(files: File[]): Promise<void> {
 		const files_to_load = files.filter((file) => {
-			const file_extension = "." + file.name.toLowerCase().split(".").pop();
-			if (
-				file_extension &&
-				is_valid_mimetype(accept_file_types, file_extension, file.type)
-			) {
+			const file_name = file.name.toLowerCase();
+			const file_extension = "." + file_name.split(".").pop();
+			if (is_valid_mimetype(accept_file_types, file_name, file.type)) {
 				return true;
 			}
 			if (
-				file_extension && Array.isArray(filetype)
+				Array.isArray(filetype)
 					? filetype.includes(file_extension)
 					: file_extension === filetype
 			) {
 				return true;
 			}
-			dispatch("error", `Invalid file type only ${filetype} allowed.`);
+			onerror?.(`Invalid file type only ${filetype} allowed.`);
 			return false;
 		});
 		if (format != "blob") {
 			await load_files(files_to_load);
 		} else {
 			if (file_count === "single") {
-				dispatch("load", files_to_load[0]);
+				onload?.(files_to_load[0]);
 				return;
 			}
-			dispatch("load", files_to_load);
+			onload?.(files_to_load);
 		}
 	}
 
@@ -268,16 +263,18 @@
 			await load_files(files_to_load);
 		} else {
 			if (file_count === "single") {
-				dispatch("load", files_to_load[0]);
+				onload?.(files_to_load[0]);
 				return;
 			}
-			dispatch("load", files_to_load);
+			onload?.(files_to_load);
 		}
 	}
 </script>
 
 {#if filetype === "clipboard"}
-	<button
+	<svelte:element
+		this={container_element}
+		class="upload-container"
 		class:hidden
 		class:center
 		class:boundedheight
@@ -290,18 +287,27 @@
 					? height + "px"
 					: height
 				: "100%"}
-		tabindex={hidden ? -1 : 0}
-		on:click={paste_clipboard}
-		aria-label={aria_label || "Paste from clipboard"}
+		role={container_element === "div" ? "none" : undefined}
+		tabindex={container_element === "button"
+			? hidden
+				? -1
+				: tab_index
+			: undefined}
+		onclick={paste_clipboard}
+		aria-label={container_element === "button"
+			? aria_label || "Paste from clipboard"
+			: undefined}
 	>
-		<slot />
-	</button>
+		{#if children}{@render children()}{/if}
+	</svelte:element>
 {:else if uploading && show_progress}
 	{#if !hidden}
 		<UploadProgress {root} {upload_id} files={file_data} {stream_handler} />
 	{/if}
 {:else}
-	<button
+	<svelte:element
+		this={container_element}
+		class="upload-container"
 		class:hidden
 		class:center
 		class:boundedheight
@@ -315,23 +321,30 @@
 					? height + "px"
 					: height
 				: "100%"}
-		tabindex={hidden ? -1 : 0}
+		role={container_element === "div" ? "none" : undefined}
+		tabindex={container_element === "button"
+			? hidden
+				? -1
+				: tab_index
+			: undefined}
 		use:drag={{
-			on_drag_change: (dragging) => (dragging = dragging),
+			on_drag_change: (d) => (dragging = d),
 			on_files: (files) => load_files_from_upload(files),
 			accepted_types: accept_file_types,
 			mode: file_count,
 			disable_click
 		}}
-		aria-label={aria_label || "Click to upload or drop files"}
-		aria-dropeffect="copy"
+		aria-label={container_element === "button"
+			? aria_label || "Click to upload or drop files"
+			: undefined}
+		aria-dropeffect={container_element === "button" ? "copy" : undefined}
 	>
-		<slot />
-	</button>
+		{#if children}{@render children()}{/if}
+	</svelte:element>
 {/if}
 
 <style>
-	button {
+	.upload-container {
 		cursor: pointer;
 		width: var(--size-full);
 	}

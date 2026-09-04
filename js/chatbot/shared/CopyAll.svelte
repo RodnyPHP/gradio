@@ -1,13 +1,17 @@
 <script lang="ts">
-	import { onDestroy } from "svelte";
 	import { Copy, Check } from "@gradio/icons";
 	import type { NormalisedMessage } from "../types";
 	import { IconButton } from "@gradio/atoms";
 
-	let copied = false;
-	export let value: NormalisedMessage[] | null;
-	export let watermark: string | null = null;
+	let {
+		value,
+		watermark = null
+	}: {
+		value: NormalisedMessage[] | null;
+		watermark?: string | null;
+	} = $props();
 
+	let copied = $state(false);
 	let timer: NodeJS.Timeout;
 
 	function copy_feedback(): void {
@@ -46,13 +50,15 @@
 		}
 	}
 
-	onDestroy(() => {
-		if (timer) clearTimeout(timer);
+	$effect(() => {
+		return () => {
+			if (timer) clearTimeout(timer);
+		};
 	});
 </script>
 
 <IconButton
 	Icon={copied ? Check : Copy}
-	on:click={handle_copy}
+	onclick={handle_copy}
 	label={copied ? "Copied conversation" : "Copy conversation"}
-></IconButton>
+/>

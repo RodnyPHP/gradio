@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import copy
 import inspect
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
@@ -208,7 +207,7 @@ class Chatbot(Component):
     component is usually used as an output component.
 
     Demos: chatbot_simple, chatbot_streaming, chatbot_with_tools, chatbot_core_components
-    Guides: creating-a-chatbot-fast, creating-a-custom-chatbot-with-blocks, agents-and-tool-usage
+    Guides: chatbot-specific-events, conversational-chatbot, creating-a-chatbot-fast, creating-a-custom-chatbot-with-blocks, agents-and-tool-usage
     """
 
     data_model = ChatbotDataMessages
@@ -262,7 +261,7 @@ class Chatbot(Component):
         layout: Literal["panel", "bubble"] | None = None,
         placeholder: str | None = None,
         examples: list[ExampleMessage] | None = None,
-        allow_file_downloads=True,
+        allow_file_downloads: bool = True,
         group_consecutive_messages: bool = True,
         allow_tags: list[str] | bool = True,
         reasoning_tags: list[tuple[str, str]] | None = None,
@@ -272,7 +271,7 @@ class Chatbot(Component):
         Parameters:
             value: Default list of messages to show in chatbot, where each message is of the format {"role": "user", "content": "Help me."}. Role can be one of "user", "assistant", or "system". Content should be either text, or media passed as a Gradio component, e.g. {"content": gr.Image("lion.jpg")}. If a function is provided, the function will be called each time the app loads to set the initial value of this component.
             label: the label for this component. Appears above the component and is also used as the header if there are a table of examples for this component. If None and used in a `gr.Interface`, the label will be the name of the parameter this component is assigned to.
-            every: Continously calls `value` to recalculate it if `value` is a function (has no effect otherwise). Can provide a Timer whose tick resets `value`, or a float that provides the regular interval for the reset Timer.
+            every: Continuously calls `value` to recalculate it if `value` is a function (has no effect otherwise). Can provide a Timer whose tick resets `value`, or a float that provides the regular interval for the reset Timer.
             inputs: Components that are used as inputs to calculate `value` if `value` is a function (has no effect otherwise). `value` is recalculated any time the inputs change.
             show_label: if True, will display label.
             container: If True, will place the component in a container - providing some extra padding around the border.
@@ -502,9 +501,11 @@ class Chatbot(Component):
             chat_message.unrender()
             component = import_component_and_data(type(chat_message).__name__)
             if component:
-                chat_message.constructor_args["render"] = False
-                component = chat_message.__class__(**chat_message.constructor_args)
-                chat_message.constructor_args.pop("value", None)
+                # Don't rewrite the caller's constructor args: a streaming handler
+                # yields the same history repeatedly, so this runs again next pass.
+                constructor_args = {**chat_message.constructor_args, "render": False}
+                component = chat_message.__class__(**constructor_args)
+                constructor_args.pop("value", None)
                 config = component.get_config()
                 component_name = type(chat_message).__name__.lower()
                 value = config.get("value", None)
@@ -518,7 +519,7 @@ class Chatbot(Component):
                 return ComponentMessage(
                     component=component_name,
                     value=value,
-                    constructor_args=chat_message.constructor_args,
+                    constructor_args=constructor_args,
                     props=config,
                 )
         elif isinstance(chat_message, dict) and "path" in chat_message:
@@ -544,7 +545,6 @@ class Chatbot(Component):
     def _postprocess(
         self, message: MessageDict | Message | ChatMessage | NormalizedMessageDict
     ) -> list[Message] | None:
-        message = copy.deepcopy(message)
         role = message["role"] if isinstance(message, dict) else message.role  # type: ignore[possibly-unbound-attribute]
         metadata = (
             message.get("metadata") if isinstance(message, dict) else message.metadata  # type: ignore[possibly-unbound-attribute]

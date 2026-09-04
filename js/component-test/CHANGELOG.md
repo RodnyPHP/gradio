@@ -1,5 +1,78 @@
 # @self/component-test
 
+## 0.6.0
+
+### Features
+
+- [#13329](https://github.com/gradio-app/gradio/pull/13329) [`7ac583a`](https://github.com/gradio-app/gradio/commit/7ac583a38a4c995d172033ff6e3700390201ff21) - Make builds go zoom zoom.  Thanks @pngwn!
+
+### Dependency updates
+
+- @self/build@0.6.2
+- @gradio/video@0.23.0
+
+## 0.5.37
+
+### Dependency updates
+
+- @gradio/video@0.22.0
+
+## 0.5.36
+
+### Dependency updates
+
+- @gradio/video@0.21.0
+
+## 0.5.35
+
+### Dependency updates
+
+- @gradio/video@0.20.8
+
+## 0.5.35
+
+### Dependency updates
+
+- @gradio/video@0.20.7
+
+## 0.5.35
+
+### Dependency updates
+
+- @gradio/video@0.20.6
+
+## 0.5.35
+
+### Dependency updates
+
+- @gradio/video@0.20.5
+
+## 0.5.35
+
+### Dependency updates
+
+- @self/build@0.6.0
+- @gradio/video@0.20.4
+
+## 0.5.35
+
+### Dependency updates
+
+- @gradio/video@0.20.3
+
+## 0.5.35
+
+### Dependency updates
+
+- @gradio/video@0.20.2
+
+## 0.5.35
+
+### Dependency updates
+
+- @gradio/video@0.20.1
+- @self/build@0.5.2
+
 ## 0.5.35
 
 ### Dependency updates

@@ -107,14 +107,10 @@ That's the gist of the core `gradio` Python library, but Gradio is actually so m
 * [Gradio Python Client](https://www.gradio.app/guides/getting-started-with-the-python-client) (`gradio_client`): query any Gradio app programmatically in Python.
 * [Gradio JavaScript Client](https://www.gradio.app/guides/getting-started-with-the-js-client) (`@gradio/client`): query any Gradio app programmatically in JavaScript.
 * [Hugging Face Spaces](https://huggingface.co/spaces): the most popular place to host Gradio applications — for free!
+* [Server mode](https://www.gradio.app/guides/server-mode) (`gradio.Server`): build a completely custom frontend using only Gradio's backend (queue, streaming, MCP, ZeroGPU, and Spaces hosting included).
 
 ## What's Next?
 
 Keep learning about Gradio sequentially using the Gradio Guides, which include explanations as well as example code and embedded interactive demos. Next up: [let's dive deeper into the Interface class](https://www.gradio.app/guides/the-interface-class).
 
 Or, if you already know the basics and are looking for something specific, you can search the more [technical API documentation](https://www.gradio.app/docs/).
-
-
-## Gradio Sketch
-
-You can also build Gradio applications without writing any code. Simply type `gradio sketch` into your terminal to open up an editor that lets you define and modify Gradio components, adjust their layouts, add events, all through a web editor. Or [use this hosted version of Gradio Sketch, running on Hugging Face Spaces](https://huggingface.co/spaces/aliabid94/Sketch).

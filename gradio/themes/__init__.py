@@ -1,24 +1,32 @@
 from gradio.themes.base import Base, ThemeClass
 from gradio.themes.citrus import Citrus
+from gradio.themes.cyberpunk import Cyberpunk
 from gradio.themes.default import Default
+from gradio.themes.ember import Ember
 from gradio.themes.glass import Glass
+from gradio.themes.mario import Mario
 from gradio.themes.monochrome import Monochrome
+from gradio.themes.neon import Neon
 from gradio.themes.ocean import Ocean
 from gradio.themes.origin import Origin
 from gradio.themes.soft import Soft
 from gradio.themes.utils import colors, sizes
 from gradio.themes.utils.colors import Color
-from gradio.themes.utils.fonts import Font, GoogleFont
+from gradio.themes.utils.fonts import Font, GoogleFont, LocalFont
 from gradio.themes.utils.sizes import Size
 
 __all__ = [
     "Base",
     "Color",
     "Default",
+    "Ember",
     "Font",
     "Glass",
     "GoogleFont",
+    "LocalFont",
+    "Cyberpunk",
     "Monochrome",
+    "Neon",
     "Size",
     "Soft",
     "ThemeClass",
@@ -27,6 +35,7 @@ __all__ = [
     "Origin",
     "Citrus",
     "Ocean",
+    "Mario",
 ]
 
 

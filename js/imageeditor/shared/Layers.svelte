@@ -10,45 +10,63 @@
 		VisibilityOff
 	} from "@gradio/icons";
 	import { IconButton } from "@gradio/atoms";
-	import { createEventDispatcher } from "svelte";
 	import type { Writable } from "svelte/store";
+	import type { I18nFormatter } from "@gradio/utils";
 
-	const dispatch = createEventDispatcher<{
-		new_layer: void;
-		change_layer: string;
-		move_layer: { id: string; direction: "up" | "down" };
-		delete_layer: string;
-		toggle_layer_visibility: string;
-	}>();
-
-	export let layers: Writable<{
-		active_layer: string;
-		layers: {
-			name: string;
-			id: string;
-			user_created: boolean;
-			visible: boolean;
-		}[];
-	}>;
-	export let enable_additional_layers = true;
-	export let enable_layers = true;
-	export let show_layers = false;
+	let {
+		i18n,
+		layers,
+		enable_additional_layers = true,
+		enable_layers = true,
+		show_layers = false,
+		onnew_layer,
+		onchange_layer,
+		onmove_layer,
+		ondelete_layer,
+		ontoggle_layer_visibility
+	}: {
+		i18n: I18nFormatter;
+		layers: Writable<{
+			active_layer: string;
+			layers: {
+				name: string;
+				id: string;
+				user_created: boolean;
+				visible: boolean;
+			}[];
+		}>;
+		enable_additional_layers?: boolean;
+		enable_layers?: boolean;
+		show_layers?: boolean;
+		onnew_layer?: () => void;
+		onchange_layer?: (id: string) => void;
+		onmove_layer?: (value: { id: string; direction: "up" | "down" }) => void;
+		ondelete_layer?: (id: string) => void;
+		ontoggle_layer_visibility?: (id: string) => void;
+	} = $props();
 
 	function new_layer(): void {
-		dispatch("new_layer");
+		onnew_layer?.();
 	}
 
 	function change_layer(id: string): void {
-		dispatch("change_layer", id);
+		onchange_layer?.(id);
 		show_layers = false;
 	}
 
 	function move_layer(id: string, direction: "up" | "down"): void {
-		dispatch("move_layer", { id, direction });
+		onmove_layer?.({ id, direction });
 	}
 
 	function delete_layer(id: string): void {
-		dispatch("delete_layer", id);
+		ondelete_layer?.(id);
+	}
+
+	function localize_layer_name(name: string): string {
+		const generated_layer_name = /^Layer (\d+)$/.exec(name);
+		return generated_layer_name
+			? `${i18n("image_editor.layer")} ${generated_layer_name[1]}`
+			: name;
 	}
 </script>
 
@@ -60,12 +78,18 @@
 	>
 		<button
 			class="layer-title-button"
-			aria-label="Show Layers"
-			on:click|stopPropagation={() => (show_layers = !show_layers)}
+			aria-label={i18n("image_editor.show_layers")}
+			onclick={(event) => {
+				event.stopPropagation();
+				show_layers = !show_layers;
+			}}
 		>
 			{show_layers
-				? "Layers"
-				: $layers.layers.find((l) => l.id === $layers.active_layer)?.name}
+				? i18n("image_editor.layers")
+				: localize_layer_name(
+						$layers.layers.find((l) => l.id === $layers.active_layer)?.name ??
+							""
+					)}
 			<span class="icon"><Layers /></span>
 		</button>
 		{#if show_layers}
@@ -76,31 +100,34 @@
 							<IconButton
 								Icon={VisibilityOff}
 								size="small"
-								on:click={(e) => {
+								onclick={(e) => {
 									e.stopPropagation();
-									dispatch("toggle_layer_visibility", id);
+									ontoggle_layer_visibility?.(id);
 								}}
 							/>
 						{:else}
 							<IconButton
 								Icon={Visibility}
 								size="small"
-								on:click={(e) => {
+								onclick={(e) => {
 									e.stopPropagation();
-									dispatch("toggle_layer_visibility", id);
+									ontoggle_layer_visibility?.(id);
 								}}
 							/>
 						{/if}
 						<button
 							class:selected_layer={$layers.active_layer === id}
 							aria-label={`layer-${i + 1}`}
-							on:click|stopPropagation={() => change_layer(id)}>{name}</button
+							onclick={(event) => {
+								event.stopPropagation();
+								change_layer(id);
+							}}>{localize_layer_name(name)}</button
 						>
 						{#if $layers.layers.length > 1}
 							<div>
 								{#if i > 0}
 									<IconButton
-										on:click={(e) => {
+										onclick={(e) => {
 											e.stopPropagation();
 											move_layer(id, "up");
 										}}
@@ -110,7 +137,7 @@
 								{/if}
 								{#if i < $layers.layers.length - 1}
 									<IconButton
-										on:click={(e) => {
+										onclick={(e) => {
 											e.stopPropagation();
 											move_layer(id, "down");
 										}}
@@ -120,7 +147,7 @@
 								{/if}
 								{#if $layers.layers.length > 1 && user_created}
 									<IconButton
-										on:click={(e) => {
+										onclick={(e) => {
 											e.stopPropagation();
 											delete_layer(id);
 										}}
@@ -136,8 +163,8 @@
 					<li class="add-layer">
 						<IconButton
 							Icon={Plus}
-							label="Add Layer"
-							on:click={(e) => {
+							label={i18n("image_editor.add_layer")}
+							onclick={(e) => {
 								e.stopPropagation();
 								new_layer();
 							}}

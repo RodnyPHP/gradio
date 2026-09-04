@@ -1,5 +1,90 @@
 # @gradio/client
 
+## 2.5.1
+
+### Fixes
+
+- [#13782](https://github.com/gradio-app/gradio/pull/13782) [`a9ce60a`](https://github.com/gradio-app/gradio/commit/a9ce60ae03123ed6374b739d862e62dcae2f451e) - Load a saved run's outputs, not just its inputs, when SSR is on.  Thanks @abidlabs!
+
+## 2.5.0
+
+### Features
+
+- [#13718](https://github.com/gradio-app/gradio/pull/13718) [`a9e8382`](https://github.com/gradio-app/gradio/commit/a9e8382c4f68e938b5fceef299d7539434c6063f) - Add browser-local run history and loading.  Thanks @abidlabs!
+
+## 2.4.0
+
+### Features
+
+- [#13601](https://github.com/gradio-app/gradio/pull/13601) [`0ee5cc8`](https://github.com/gradio-app/gradio/commit/0ee5cc80e2915e5a1b074c892490a62f165cd80d) - Preserve browser-visible proxy origins for frontend assets and API requests, and retain app-level FastAPI root paths.  Thanks @abidlabs!
+- [#13657](https://github.com/gradio-app/gradio/pull/13657) [`a10b1d7`](https://github.com/gradio-app/gradio/commit/a10b1d75d5599929682b93e1296149192c0a0a58) - Fix private Space connections and error handling in the JS client: accept the deprecated `hf_token` option as an alias for `token`, raise clear errors when a Space is private or missing, tolerate malformed `/info` payloads instead of crashing with "Cannot read properties of undefined (reading 'map')", and make `predict()` reject with real `Error` objects instead of plain status objects that surface as unhandled promise rejections.  Thanks @abidlabs!
+- [#13620](https://github.com/gradio-app/gradio/pull/13620) [`5200235`](https://github.com/gradio-app/gradio/commit/520023532b66d6fa327da04701da3e02c554fa6e) - Fix chained events after cancellation and while the browser tab is hidden.  Thanks @abidlabs!
+- [#13667](https://github.com/gradio-app/gradio/pull/13667) [`2d753d0`](https://github.com/gradio-app/gradio/commit/2d753d0e86bf53e97b0094c2dce0726a265cbe3e) - oauth: let API callers supply a token for endpoints that take a `gr.OAuthToken`, via `oauth_token` on the Python and JS clients — sent only to endpoints that declare they need one.  Thanks @abidlabs!
+
+### Fixes
+
+- [#13656](https://github.com/gradio-app/gradio/pull/13656) [`7205856`](https://github.com/gradio-app/gradio/commit/72058560a660d4dc97e8a9948bee5e972ad80afa) - Preserve original filenames and MIME types when uploading `File`/`Blob` objects via the JS client, and use `handle_file` in the auto-generated JavaScript API snippets.  Thanks @abidlabs!
+- [#13655](https://github.com/gradio-app/gradio/pull/13655) [`e29c824`](https://github.com/gradio-app/gradio/commit/e29c824fd8f56a91a25846d88698750c628544bf) - Ship a real browser bundle for the documented CDN path (`dist/index.min.js`) and a CommonJS entry (`dist/index.cjs` via the `require` exports condition) for `@gradio/client`.  Thanks @abidlabs!
+- [#13627](https://github.com/gradio-app/gradio/pull/13627) [`3b12faa`](https://github.com/gradio-app/gradio/commit/3b12faa404660cd68ff4b3f20fbf6af3f3906670) - Keep in-flight events and generators working when an app is hot-reloaded (`gradio app.py`).  Thanks @abidlabs!
+
+## 2.3.1
+
+### Fixes
+
+- [#13588](https://github.com/gradio-app/gradio/pull/13588) [`2e80558`](https://github.com/gradio-app/gradio/commit/2e805588c8dc84a4a584898fd43b267c72209f78) - Fire `state.change()` for streaming (`.stream()`) events.  Thanks @hysts!
+- [#13581](https://github.com/gradio-app/gradio/pull/13581) [`461d82d`](https://github.com/gradio-app/gradio/commit/461d82df2689ec0c53e84b8722eaeae58fd2a6ae) - Use same-origin credentials in the JS client so cross-origin embeds work again.  Thanks @hysts!
+- [#13579](https://github.com/gradio-app/gradio/pull/13579) [`3d26f41`](https://github.com/gradio-app/gradio/commit/3d26f41c4a3bfa31ea01c4ae0d082a9fc9ed0bc7) - Make `Client.predict()` reject its returned promise on unknown endpoints so the error is catchable.  Thanks @abidlabs!
+
+## 2.3.0
+
+### Features
+
+- [#13526](https://github.com/gradio-app/gradio/pull/13526) [`53cb4ca`](https://github.com/gradio-app/gradio/commit/53cb4cae1ec3521e9170d12867253516413ba37a) - Run `pnpm lint` and `pnpm ts:check` on CI.  Thanks @abidlabs!
+
+## 2.2.2
+
+### Fixes
+
+- [#13500](https://github.com/gradio-app/gradio/pull/13500) [`751a397`](https://github.com/gradio-app/gradio/commit/751a397ce519732526863ee84e311f7f64195f9d) - Close iterator on terminal error in JS client.  Thanks @hysts!
+
+## 2.2.1
+
+### Fixes
+
+- [#13403](https://github.com/gradio-app/gradio/pull/13403) [`df56862`](https://github.com/gradio-app/gradio/commit/df56862a1531fc372a3248716dc4bd07e6db1c52) - [js-client] close submit iterator on next/close race.  Thanks @hysts!
+
+## 2.2.0
+
+### Features
+
+- [#13176](https://github.com/gradio-app/gradio/pull/13176) [`45c4ecd`](https://github.com/gradio-app/gradio/commit/45c4ecd25fc83c7ee0210d216df1bc4bd509e622) - Add `@gr.cache()` decorator for caching deterministic functions, as as well as a lower-level `gr.Cache` that uses dependency injection.  Thanks @abidlabs!
+
+### Fixes
+
+- [#13210](https://github.com/gradio-app/gradio/pull/13210) [`4005b93`](https://github.com/gradio-app/gradio/commit/4005b93dd59d7e0d144619986f01e900659b3d0b) - Fix ZeroGPU handling for `gr.Server`.  Thanks @abidlabs!
+
+## 2.1.0
+
+### Features
+
+- [#12929](https://github.com/gradio-app/gradio/pull/12929) [`978bc6e`](https://github.com/gradio-app/gradio/commit/978bc6ea5094aa11e10994cdd662c4c663a86a83) - Add server functions support to gr.HTML.  Thanks @aliabid94!
+- [#12907](https://github.com/gradio-app/gradio/pull/12907) [`3e625a0`](https://github.com/gradio-app/gradio/commit/3e625a0ecfab6e74b7561b68adbe55341ecbc47a) - Better error handling when connection to server is lost.  Thanks @abidlabs!
+
+## 2.0.4
+
+### Fixes
+
+- [#12828](https://github.com/gradio-app/gradio/pull/12828) [`151cbd1`](https://github.com/gradio-app/gradio/commit/151cbd1aac0da3aeb5f0b7b33585223d2bc47138) - Fix private spaces.  Thanks @freddyaboulton!
+- [#12835](https://github.com/gradio-app/gradio/pull/12835) [`5ecf6d2`](https://github.com/gradio-app/gradio/commit/5ecf6d27c50a20e2329c1aca0634924479ceb6cd) - Fix CSS root in spaces.  Thanks @freddyaboulton!
+- [#12817](https://github.com/gradio-app/gradio/pull/12817) [`05acc66`](https://github.com/gradio-app/gradio/commit/05acc6627de866db6a742e0540c2733041d76a86) - Fix Login.  Thanks @freddyaboulton!
+
+## 2.0.3
+
+### Fixes
+
+- [#12773](https://github.com/gradio-app/gradio/pull/12773) [`6edcea5`](https://github.com/gradio-app/gradio/commit/6edcea5d74be661d37c70ccca08900be2ceb8e1e) - Fix dev mode.  Thanks @pngwn!
+- [#12472](https://github.com/gradio-app/gradio/pull/12472) [`9a2bc0d`](https://github.com/gradio-app/gradio/commit/9a2bc0dacdd2b3f670fae815093c61ad08eee7e3) - Re-enable SSR mode.  Thanks @pngwn!
+
 ## 2.0.2
 
 ### Fixes

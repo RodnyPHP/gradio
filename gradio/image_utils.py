@@ -7,9 +7,9 @@ from pathlib import Path
 from typing import Literal, cast
 from urllib.parse import quote
 
-import httpx
 import numpy as np
 import PIL.Image
+from gradio_client import utils as client_utils
 from gradio_client.utils import get_mimetype, is_http_url_like
 from PIL import ImageOps
 
@@ -17,6 +17,7 @@ from gradio import processing_utils
 from gradio.components.image_editor import WatermarkOptions
 from gradio.data_classes import ImageData
 from gradio.exceptions import Error
+from gradio.profiling import traced_sync
 
 PIL.Image.init()  # fixes https://github.com/gradio-app/gradio/issues/2843 (remove when requiring Pillow 9.4+)
 
@@ -249,8 +250,10 @@ def extract_svg_content(image_file: str | Path) -> str:
     """
     image_file = str(image_file)
     if is_http_url_like(image_file):
-        response = httpx.get(image_file)
-        response.raise_for_status()  # Raise an error for bad status codes
+        response = client_utils.synchronize_async(
+            processing_utils.async_ssrf_protected_get, image_file
+        )
+        response.raise_for_status()
         return response.text
     else:
         with open(image_file) as file:
@@ -258,6 +261,7 @@ def extract_svg_content(image_file: str | Path) -> str:
         return svg_content
 
 
+@traced_sync("preprocess_format_image")
 def preprocess_image(
     payload: ImageData | None,
     cache_dir: str,
@@ -311,6 +315,7 @@ def preprocess_image(
             warnings.simplefilter("ignore")
             if image_mode is not None:
                 im = im.convert(image_mode)
+
     return format_image(
         im,
         type=type,

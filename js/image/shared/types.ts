@@ -1,4 +1,4 @@
-import type { LoadingStatus } from "@gradio/statustracker";
+import type { ILoadingStatus as LoadingStatus } from "@gradio/statustracker";
 import type { FileData } from "@gradio/client";
 import type { CustomButton } from "@gradio/utils";
 
@@ -26,6 +26,7 @@ export interface ImageProps {
 	input_ready: boolean;
 	placeholder: string;
 	watermark: FileData | null;
+	alt_text: string | null;
 }
 
 export interface ImageEvents {

@@ -32,7 +32,7 @@ class Image(StreamingInput, Component):
     Creates an image component that can be used to upload images (as an input) or display images (as an output).
 
     Demos: sepia_filter, fake_diffusion
-    Guides: image-classification-in-pytorch, image-classification-in-tensorflow, image-classification-with-vision-transformers, create-your-own-friends-with-a-gan
+    Guides: streaming-inputs, streaming-outputs
     """
 
     EVENTS = [
@@ -91,6 +91,7 @@ class Image(StreamingInput, Component):
         webcam_options: WebcamOptions | None = None,
         placeholder: str | None = None,
         watermark: WatermarkOptions | None = None,
+        alt_text: str | None = None,
     ):
         """
         Parameters:
@@ -102,7 +103,7 @@ class Image(StreamingInput, Component):
             sources: List of sources for the image. "upload" creates a box where user can drop an image file, "webcam" allows user to take snapshot from their webcam, "clipboard" allows users to paste an image from the clipboard. If None, defaults to ["upload", "webcam", "clipboard"] if streaming is False, otherwise defaults to ["webcam"].
             type: The format the image is converted before being passed into the prediction function. "numpy" converts the image to a numpy array with shape (height, width, 3) and values from 0 to 255, "pil" converts the image to a PIL image object, "filepath" passes a str path to a temporary file containing the image. To support animated GIFs in input, the `type` should be set to "filepath" or "pil". To support SVGs, the `type` should be set to "filepath".
             label: the label for this component. Appears above the component and is also used as the header if there are a table of examples for this component. If None and used in a `gr.Interface`, the label will be the name of the parameter this component is assigned to.
-            every: Continously calls `value` to recalculate it if `value` is a function (has no effect otherwise). Can provide a Timer whose tick resets `value`, or a float that provides the regular interval for the reset Timer.
+            every: Continuously calls `value` to recalculate it if `value` is a function (has no effect otherwise). Can provide a Timer whose tick resets `value`, or a float that provides the regular interval for the reset Timer.
             inputs: Components that are used as inputs to calculate `value` if `value` is a function (has no effect otherwise). `value` is recalculated any time the inputs change.
             show_label: if True, will display label.
             buttons: A list of buttons to show in the corner of the component. Valid options are "download", "share", "fullscreen", or a gr.Button() instance. The "download" button allows the user to download the image. The "share" button allows the user to share to Hugging Face Spaces Discussions. The "fullscreen" button allows the user to view in fullscreen mode. Custom gr.Button() instances will appear in the toolbar with their configured icon and/or label, and clicking them will trigger any .click() events registered on the button. by default, all of the built-in buttons are shown.
@@ -119,6 +120,7 @@ class Image(StreamingInput, Component):
             preserved_by_key: A list of parameters from this component's constructor. Inside a gr.render() function, if a component is re-rendered with the same key, these (and only these) parameters will be preserved in the UI (if they have been changed by the user or an event listener) instead of re-rendered based on the values provided during constructor.
             placeholder: Custom text for the upload area. Overrides default upload messages when provided. Accepts new lines and `#` to designate a heading.
             watermark: If provided and this component is used to display a `value` image, the `watermark` image will be displayed on the bottom right of the `value` image, 10 pixels from the bottom and 10 pixels from the right. The watermark image will not be resized. Supports `PIL.Image`, `numpy.array`, `pathlib.Path`, and `str` filepaths. SVGs and GIFs are not supported as `watermark` images nor can they be watermarked.
+            alt_text: Alternative text for the image, used by screen readers. If not provided, the image is treated as decorative.
         """
         self.format = format
 
@@ -129,6 +131,7 @@ class Image(StreamingInput, Component):
         self.watermark = (
             watermark if isinstance(watermark, WatermarkOptions) else WatermarkOptions()
         )
+        self.alt_text = alt_text
 
         if isinstance(watermark, (str, Path, PIL.Image.Image, np.ndarray)):
             self.watermark.watermark = watermark

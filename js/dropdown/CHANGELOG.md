@@ -1,5 +1,130 @@
 # @gradio/dropdown
 
+## 0.14.2
+
+### Dependency updates
+
+- @gradio/utils@0.14.0
+- @gradio/atoms@0.26.1
+- @gradio/statustracker@0.15.2
+
+## 0.14.1
+
+### Dependency updates
+
+- @gradio/statustracker@0.15.1
+- @gradio/icons@0.16.0
+- @gradio/atoms@0.26.0
+
+## 0.14.0
+
+### Features
+
+- [#13526](https://github.com/gradio-app/gradio/pull/13526) [`53cb4ca`](https://github.com/gradio-app/gradio/commit/53cb4cae1ec3521e9170d12867253516413ba37a) - Run `pnpm lint` and `pnpm ts:check` on CI.  Thanks @abidlabs!
+- [#13534](https://github.com/gradio-app/gradio/pull/13534) [`a11c728`](https://github.com/gradio-app/gradio/commit/a11c7282461ccef90f24a031d77a597ac9ae3d0e) - Re-translate i18n choices display names when the language is switched at runtime.  Thanks @hysts!
+
+### Fixes
+
+- [#13542](https://github.com/gradio-app/gradio/pull/13542) [`9d83502`](https://github.com/gradio-app/gradio/commit/9d83502215b56ed7747490afd0d5145b087a23e7) - Make dropdowns accessible to screen readers (combobox ARIA pattern).  Thanks @hysts!
+
+### Dependency updates
+
+- @gradio/atoms@0.25.0
+- @gradio/statustracker@0.15.0
+- @gradio/utils@0.13.0
+
+## 0.13.0
+
+### Features
+
+- [#13516](https://github.com/gradio-app/gradio/pull/13516) [`8ec4cbc`](https://github.com/gradio-app/gradio/commit/8ec4cbc8de3bbc1d8ecb660ad8dd22ad35500e1c) - Translate i18n `choices` display names in choice-based components.  Thanks @hysts!
+
+## 0.12.1
+
+### Fixes
+
+- [#13451](https://github.com/gradio-app/gradio/pull/13451) [`29bd7a0`](https://github.com/gradio-app/gradio/commit/29bd7a00fc087df5f8d9780b5e1082729fc5ffb0) - `gr.Dropdown()` Fixes.  Thanks @dawoodkhan82!
+
+## 0.12.0
+
+### Features
+
+- [#13247](https://github.com/gradio-app/gradio/pull/13247) [`e6b1634`](https://github.com/gradio-app/gradio/commit/e6b1634f3d64851a82505e3b37ac1f4b90905b05) - Dropdown Unit Tests.  Thanks @freddyaboulton!
+
+### Dependency updates
+
+- @gradio/atoms@0.24.0
+- @gradio/statustracker@0.14.1
+
+## 0.11.8
+
+### Dependency updates
+
+- @gradio/atoms@0.23.1
+- @gradio/statustracker@0.14.0
+
+## 0.11.7
+
+### Dependency updates
+
+- @gradio/utils@0.12.2
+- @gradio/atoms@0.23.0
+- @gradio/statustracker@0.13.1
+
+## 0.11.6
+
+### Fixes
+
+- [#12994](https://github.com/gradio-app/gradio/pull/12994) [`7874d04`](https://github.com/gradio-app/gradio/commit/7874d0411c81dcde9c4b08e7e064ca0dbef94e2e) - Fix dropdown detaching from input on scroll.  Thanks @hysts!
+
+### Dependency updates
+
+- @gradio/utils@0.12.1
+- @gradio/statustracker@0.13.0
+
+## 0.11.5
+
+### Fixes
+
+- [#12944](https://github.com/gradio-app/gradio/pull/12944) [`2c769c7`](https://github.com/gradio-app/gradio/commit/2c769c71628730fbf06c6ba9b70d672b3d052b0f) - Fix massive dropdown slowdowns caused by descructuring a derived array.  Thanks @its5Q!
+
+### Dependency updates
+
+- @gradio/statustracker@0.12.5
+- @gradio/utils@0.12.0
+- @gradio/atoms@0.22.2
+
+## 0.11.4
+
+### Dependency updates
+
+- @gradio/utils@0.11.3
+- @gradio/atoms@0.22.0
+- @gradio/statustracker@0.12.4
+
+## 0.11.3
+
+### Dependency updates
+
+- @gradio/atoms@0.21.0
+- @gradio/statustracker@0.12.3
+
+## 0.11.2
+
+### Fixes
+
+- [#12800](https://github.com/gradio-app/gradio/pull/12800) [`7a1c321`](https://github.com/gradio-app/gradio/commit/7a1c321b6546ba05a353488f5133e8262c4a8a39) - Bump svelte/kit for security reasons.  Thanks @freddyaboulton!
+- [#12772](https://github.com/gradio-app/gradio/pull/12772) [`31cf0a6`](https://github.com/gradio-app/gradio/commit/31cf0a6e74d09ae2d12155a7df35dcfbe0c5dac0) - Fix custom button click event triggers in dropdown.  Thanks @freddyaboulton!
+- [#12769](https://github.com/gradio-app/gradio/pull/12769) [`976cd11`](https://github.com/gradio-app/gradio/commit/976cd11838371d25405e8db62f05ede25083a5de) - Fix html in Multiselect component.  Thanks @freddyaboulton!
+- [#12697](https://github.com/gradio-app/gradio/pull/12697) [`c471e96`](https://github.com/gradio-app/gradio/commit/c471e96eff66997846cbaf4fb9f94509c61c5449) - Migrates dropdown.  Thanks @aliabid94!
+
+### Dependency updates
+
+- @gradio/statustracker@0.12.2
+- @gradio/atoms@0.20.1
+- @gradio/utils@0.11.2
+- @gradio/icons@0.15.1
+
 ## 0.11.1
 
 ### Fixes

@@ -1,5 +1,81 @@
 # gradio_client
 
+## 2.6.1
+
+### Fixes
+
+- [#13760](https://github.com/gradio-app/gradio/pull/13760) [`7831e62`](https://github.com/gradio-app/gradio/commit/7831e62509a85a3cb38689655fe6ed98946d0d74) - Give the client's internal helper tasks their own thread pool.  Thanks @hysts!
+
+## 2.6.0
+
+### Features
+
+- [#13667](https://github.com/gradio-app/gradio/pull/13667) [`2d753d0`](https://github.com/gradio-app/gradio/commit/2d753d0e86bf53e97b0094c2dce0726a265cbe3e) - oauth: let API callers supply a token for endpoints that take a `gr.OAuthToken`, via `oauth_token` on the Python and JS clients — sent only to endpoints that declare they need one.  Thanks @abidlabs!
+
+### Fixes
+
+- [#13656](https://github.com/gradio-app/gradio/pull/13656) [`7205856`](https://github.com/gradio-app/gradio/commit/72058560a660d4dc97e8a9948bee5e972ad80afa) - Preserve original filenames and MIME types when uploading `File`/`Blob` objects via the JS client, and use `handle_file` in the auto-generated JavaScript API snippets.  Thanks @abidlabs!
+- [#13627](https://github.com/gradio-app/gradio/pull/13627) [`3b12faa`](https://github.com/gradio-app/gradio/commit/3b12faa404660cd68ff4b3f20fbf6af3f3906670) - Keep in-flight events and generators working when an app is hot-reloaded (`gradio app.py`).  Thanks @abidlabs!
+- [#13614](https://github.com/gradio-app/gradio/pull/13614) [`643fb05`](https://github.com/gradio-app/gradio/commit/643fb05b51ba5b04be925ec59ab3ee9f2e50ebe5) - Restore Git tags for Python `gradio_client` releases.  Thanks @abidlabs!
+- [#13622](https://github.com/gradio-app/gradio/pull/13622) [`95369a3`](https://github.com/gradio-app/gradio/commit/95369a3ddaf69665adfbed092fca88fb432ee80a) - Fix Windows filename/path handling (reserved names, node probe, file URLs).  Thanks @abidlabs!
+
+## 2.5.0
+
+### Features
+
+- [#13289](https://github.com/gradio-app/gradio/pull/13289) [`d6f24df`](https://github.com/gradio-app/gradio/commit/d6f24df6233e7882746ba6e49307a34a11101ea1) - Improve curl info.  Thanks @freddyaboulton!
+
+### Fixes
+
+- [#13280](https://github.com/gradio-app/gradio/pull/13280) [`bb9c130`](https://github.com/gradio-app/gradio/commit/bb9c130e1e8c60b8a717da7184b02ab459be3f03) - Fix snippet generator crash on datetime values in Dataframe inputs.  Thanks @ParamChordiya!
+
+## 2.4.1
+
+### Features
+
+- [#13246](https://github.com/gradio-app/gradio/pull/13246) [`ff90963`](https://github.com/gradio-app/gradio/commit/ff909638e72f0b44e8629e5a28cea8276cdd9ab2) - Add Documentation Group for gr.Cache.  Thanks @freddyaboulton!
+
+### Fixes
+
+- [#13204](https://github.com/gradio-app/gradio/pull/13204) [`9953db9`](https://github.com/gradio-app/gradio/commit/9953db94e406477df96f98adf3e47246181ceef9) - fix: preserve special characters in uploaded filenames.  Thanks @xr843!
+
+## 2.4.0
+
+### Features
+
+- [#13045](https://github.com/gradio-app/gradio/pull/13045) [`a35f589`](https://github.com/gradio-app/gradio/commit/a35f5896e43d2585d9206e8256b4d7e321fcd0fe) - Gradio Prediction CLI Commands.  Thanks @freddyaboulton!
+
+### Fixes
+
+- [#12979](https://github.com/gradio-app/gradio/pull/12979) [`4a4c7f3`](https://github.com/gradio-app/gradio/commit/4a4c7f3b0d6fd8009fdafc580d5852984f961db1) - preserve file extension when filename stem is stripped entirely in gr.File.  Thanks @giulio-leone!
+
+## 2.3.0
+
+### Features
+
+- [#12879](https://github.com/gradio-app/gradio/pull/12879) [`c498688`](https://github.com/gradio-app/gradio/commit/c4986883b267570d76b442899c6fc09d14e3e222) - Ensure svelte version mismatches do not break custom components.  Thanks @pngwn!
+
+### Fixes
+
+- [#12942](https://github.com/gradio-app/gradio/pull/12942) [`e5ba4fa`](https://github.com/gradio-app/gradio/commit/e5ba4fa992c0ac389c6af2d143c9ad4c33eea360) - perf: use deque for SSE pending message queues in gradio_client.  Thanks @giulio-leone!
+
+## 2.2.0
+
+### Features
+
+- [#12918](https://github.com/gradio-app/gradio/pull/12918) [`e29e1cc`](https://github.com/gradio-app/gradio/commit/e29e1ccd5874cb98b813ed4f7f72d9fef2935016) - Add Space-specific skill generation to `gradio skills add`.  Thanks @abidlabs!
+
+## 2.1.0
+
+### Features
+
+- [#12700](https://github.com/gradio-app/gradio/pull/12700) [`b01c95a`](https://github.com/gradio-app/gradio/commit/b01c95a58be8e18bb4ddef7f2ee238a7774e5be9) - Rewrite behavior section of docs.  Thanks @aliabd!
+
+### Fixes
+
+- [#12882](https://github.com/gradio-app/gradio/pull/12882) [`fc7c01e`](https://github.com/gradio-app/gradio/commit/fc7c01ea1e581ef70be98fddf003b0c91315c7cc) - Validate proxy url host.  Thanks @freddyaboulton!
+- [#12811](https://github.com/gradio-app/gradio/pull/12811) [`8f8cef8`](https://github.com/gradio-app/gradio/commit/8f8cef87bfb3af64867804ad45f4385af09e07b4) - Fix windows tests.  Thanks @freddyaboulton!
+
 ## 2.0.3
 
 ### Fixes

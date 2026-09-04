@@ -1,5 +1,139 @@
 # @self/tootils
 
+## 0.16.1
+
+### Fixes
+
+- [#13745](https://github.com/gradio-app/gradio/pull/13745) [`3706565`](https://github.com/gradio-app/gradio/commit/3706565c713e6959d5078305712b5c1a4f87dda5) - Render the PLY and OBJ files `gr.Model3D` showed as a blank canvas.  Thanks @hysts!
+
+## 0.16.0
+
+### Features
+
+- [#13329](https://github.com/gradio-app/gradio/pull/13329) [`7ac583a`](https://github.com/gradio-app/gradio/commit/7ac583a38a4c995d172033ff6e3700390201ff21) - Make builds go zoom zoom.  Thanks @pngwn!
+
+### Dependency updates
+
+- @gradio/utils@0.14.0
+- @gradio/statustracker@0.15.2
+
+## 0.15.0
+
+### Dependency updates
+
+- @gradio/statustracker@0.15.1
+
+## 0.15.0
+
+### Features
+
+- [#13526](https://github.com/gradio-app/gradio/pull/13526) [`53cb4ca`](https://github.com/gradio-app/gradio/commit/53cb4cae1ec3521e9170d12867253516413ba37a) - Run `pnpm lint` and `pnpm ts:check` on CI.  Thanks @abidlabs!
+
+### Dependency updates
+
+- @gradio/statustracker@0.15.0
+- @gradio/utils@0.13.0
+
+## 0.14.0
+
+### Features
+
+- [#13348](https://github.com/gradio-app/gradio/pull/13348) [`d7c4cad`](https://github.com/gradio-app/gradio/commit/d7c4cadd8fdd5205ae544d57ca001fb32b2aae5a) - fix(e2e): plug gradio-app leaks in playwright test harness, and stop spurious ECONNRESETs from aborting the free-port scan.  Thanks @pngwn!
+- [#13348](https://github.com/gradio-app/gradio/pull/13348) [`d7c4cad`](https://github.com/gradio-app/gradio/commit/d7c4cadd8fdd5205ae544d57ca001fb32b2aae5a) - fix(e2e): plug gradio-app leaks in playwright test harness.  Thanks @pngwn!
+
+## 0.13.0
+
+### Dependency updates
+
+- @gradio/statustracker@0.14.1
+
+## 0.13.0
+
+### Features
+
+- [#13192](https://github.com/gradio-app/gradio/pull/13192) [`f4656ae`](https://github.com/gradio-app/gradio/commit/f4656ae89c30b78b4f0652b6778176d34c1b61af) - Button Unit Tests.  Thanks @dawoodkhan82!
+- [#13235](https://github.com/gradio-app/gradio/pull/13235) [`394423d`](https://github.com/gradio-app/gradio/commit/394423ddd3ec919b8dabceb3903479ab3bf8194f) - clear DOM after cleanup in render.  Thanks @hannahblair!
+
+### Fixes
+
+- [#13181](https://github.com/gradio-app/gradio/pull/13181) [`755c3d3`](https://github.com/gradio-app/gradio/commit/755c3d32c388a36d2296f8d895c5c0e1144fb54f) - fix: show validation errors on StatusTracker-dependent components.  Thanks @hysts!
+
+### Dependency updates
+
+- @gradio/statustracker@0.14.0
+
+## 0.12.0
+
+### Features
+
+- [#13151](https://github.com/gradio-app/gradio/pull/13151) [`c13daab`](https://github.com/gradio-app/gradio/commit/c13daab68aa40cb58f2c643a650b5db48e986935) - add test utils.  Thanks @pngwn!
+
+### Fixes
+
+- [#13183](https://github.com/gradio-app/gradio/pull/13183) [`1bf9bae`](https://github.com/gradio-app/gradio/commit/1bf9bae723475ad664f7d3d32596856c4881e63d) - Ensure the Accordion's `expand` and `collapse` events fire when toggled from python.  Thanks @pngwn!
+
+### Dependency updates
+
+- @gradio/utils@0.12.2
+- @gradio/statustracker@0.13.1
+
+## 0.11.0
+
+### Features
+
+- [#12998](https://github.com/gradio-app/gradio/pull/12998) [`d5e1b8f`](https://github.com/gradio-app/gradio/commit/d5e1b8f6cb7473b70fc8c082589996d5e0402810) - use a real browser environment for unit tests.  Thanks @pngwn!
+- [#13049](https://github.com/gradio-app/gradio/pull/13049) [`9ea8359`](https://github.com/gradio-app/gradio/commit/9ea8359458afbbae5431e581486fa739b85366a2) - Fix flaky playwright tests.  Thanks @freddyaboulton!
+- [#13055](https://github.com/gradio-app/gradio/pull/13055) [`ccf119d`](https://github.com/gradio-app/gradio/commit/ccf119d33f705a0c84897082359275e72e88f988) - add test helper and more textbox tests.  Thanks @pngwn!
+
+### Fixes
+
+- [#13028](https://github.com/gradio-app/gradio/pull/13028) [`30af84c`](https://github.com/gradio-app/gradio/commit/30af84cdd100855999281de8720cbb6d58b48556) - Browser tests follow-up.  Thanks @pngwn!
+
+### Dependency updates
+
+- @gradio/utils@0.12.1
+- @gradio/statustracker@0.13.0
+
+## 0.10.0
+
+### Features
+
+- [#12879](https://github.com/gradio-app/gradio/pull/12879) [`c498688`](https://github.com/gradio-app/gradio/commit/c4986883b267570d76b442899c6fc09d14e3e222) - Ensure svelte version mismatches do not break custom components.  Thanks @pngwn!
+
+### Dependency updates
+
+- @gradio/statustracker@0.12.5
+- @gradio/utils@0.12.0
+
+## 0.9.0
+
+### Dependency updates
+
+- @gradio/utils@0.11.3
+- @gradio/statustracker@0.12.4
+
+## 0.9.0
+
+### Dependency updates
+
+- @gradio/statustracker@0.12.3
+
+## 0.9.0
+
+### Features
+
+- [#12781](https://github.com/gradio-app/gradio/pull/12781) [`c64d861`](https://github.com/gradio-app/gradio/commit/c64d8613e96dedf80e47ad03a26a1b94a5761a5a) - Split e2e tests into independent apps.  Thanks @freddyaboulton!
+
+### Fixes
+
+- [#12800](https://github.com/gradio-app/gradio/pull/12800) [`7a1c321`](https://github.com/gradio-app/gradio/commit/7a1c321b6546ba05a353488f5133e8262c4a8a39) - Bump svelte/kit for security reasons.  Thanks @freddyaboulton!
+- [#12472](https://github.com/gradio-app/gradio/pull/12472) [`9a2bc0d`](https://github.com/gradio-app/gradio/commit/9a2bc0dacdd2b3f670fae815093c61ad08eee7e3) - Re-enable SSR mode.  Thanks @pngwn!
+
+### Dependency updates
+
+- @gradio/statustracker@0.12.2
+- @gradio/utils@0.11.2
+
 ## 0.8.2
 
 ### Dependency updates

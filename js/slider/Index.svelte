@@ -1,4 +1,4 @@
-<script context="module">
+<script module>
 	let _id = 0;
 </script>
 
@@ -12,6 +12,7 @@
 	let props = $props();
 	let gradio = new Gradio<SliderEvents, SliderProps>(props);
 	const INITIAL_VALUE = gradio.props.value;
+	let old_value = $state(gradio.props.value);
 
 	let range_input: HTMLInputElement;
 	let number_input: HTMLInputElement;
@@ -34,7 +35,7 @@
 	});
 
 	$effect(() => {
-		if (gradio.props.value == null) return;
+		if (gradio.props.value == null || !range_input) return;
 		range_input.style.setProperty("--range_progress", `${percentage}%`);
 		range_input.value = gradio.props.value.toString();
 	});
@@ -61,7 +62,10 @@
 	// When the value changes, dispatch the change event via handle_change()
 	// See the docs for an explanation: https://svelte.dev/docs/svelte-components#script-3-$-marks-a-statement-as-reactive
 	$effect(() => {
-		gradio.props.value && handle_change();
+		if (gradio.props.value != old_value) {
+			old_value = gradio.props.value;
+			handle_change();
+		}
 	});
 
 	function handle_resize(): void {
@@ -80,7 +84,7 @@
 	}
 </script>
 
-<svelte:window on:resize={handle_resize} />
+<svelte:window onresize={handle_resize} />
 
 <Block
 	visible={gradio.shared.visible}
@@ -115,16 +119,16 @@
 					bind:this={number_input}
 					min={gradio.props.minimum}
 					max={gradio.props.maximum}
-					on:input={handle_input}
-					on:blur={clamp}
+					oninput={handle_input}
+					onblur={clamp}
 					step={gradio.props.step}
 					{disabled}
-					on:pointerup={handle_release}
+					onpointerup={handle_release}
 				/>
 				{#if gradio.props.buttons?.includes("reset") ?? true}
 					<button
 						class="reset-button"
-						on:click={reset_value}
+						onclick={reset_value}
 						{disabled}
 						aria-label="Reset to default value"
 						data-testid="reset-button"
@@ -136,22 +140,25 @@
 		</div>
 
 		<div class="slider_input_container">
-			<span class="min_value">{minimum_value}</span>
+			<span class="min_value" data-testid="min-value">{minimum_value}</span>
 			<input
 				type="range"
 				{id}
 				name="cowbell"
+				data-testid="range-input"
 				bind:value={gradio.props.value}
 				bind:this={range_input}
 				min={gradio.props.minimum}
 				max={gradio.props.maximum}
-				on:input={handle_input}
+				oninput={handle_input}
 				step={gradio.props.step}
 				{disabled}
-				on:pointerup={handle_release}
+				onpointerup={handle_release}
 				aria-label={`range slider for ${gradio.shared.label}`}
 			/>
-			<span class="max_value">{gradio.props.maximum}</span>
+			<span class="max_value" data-testid="max-value"
+				>{gradio.props.maximum}</span
+			>
 		</div>
 	</div>
 </Block>

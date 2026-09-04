@@ -1,5 +1,167 @@
 # @gradio/html
 
+## 0.13.2
+
+### Dependency updates
+
+- @gradio/client@2.5.1
+
+## 0.13.2
+
+### Dependency updates
+
+- @gradio/client@2.5.0
+
+## 0.13.2
+
+### Fixes
+
+- [#13644](https://github.com/gradio-app/gradio/pull/13644) [`f0abb1e`](https://github.com/gradio-app/gradio/commit/f0abb1ea8e61f4b886296365639b9fe0492012a9) - restore shared props lost during frontend prop partitioning.  Thanks @dawoodkhan82!
+- [#13613](https://github.com/gradio-app/gradio/pull/13613) [`195593e`](https://github.com/gradio-app/gradio/commit/195593ed271795ce21ea8f94b7ec9e441ffd5227) - Rerun HTML mount behavior when `gr.render` replaces an unkeyed component.  Thanks @abidlabs!
+
+### Dependency updates
+
+- @gradio/client@2.4.0
+- @gradio/utils@0.14.0
+- @gradio/atoms@0.26.1
+- @gradio/statustracker@0.15.2
+
+## 0.13.1
+
+### Fixes
+
+- [#13529](https://github.com/gradio-app/gradio/pull/13529) [`6438369`](https://github.com/gradio-app/gradio/commit/64383695167206d7775a364938a1005c662ea9c7) - Wait for in-flight head scripts before running js_on_load in gr.HTML.  Thanks @hysts!
+
+### Dependency updates
+
+- @gradio/statustracker@0.15.1
+- @gradio/icons@0.16.0
+- @gradio/atoms@0.26.0
+- @gradio/client@2.3.1
+
+## 0.13.0
+
+### Features
+
+- [#13526](https://github.com/gradio-app/gradio/pull/13526) [`53cb4ca`](https://github.com/gradio-app/gradio/commit/53cb4cae1ec3521e9170d12867253516413ba37a) - Run `pnpm lint` and `pnpm ts:check` on CI.  Thanks @abidlabs!
+
+### Dependency updates
+
+- @gradio/atoms@0.25.0
+- @gradio/statustracker@0.15.0
+- @gradio/utils@0.13.0
+- @gradio/client@2.3.0
+
+## 0.12.5
+
+### Dependency updates
+
+- @gradio/client@2.2.2
+
+## 0.12.5
+
+### Fixes
+
+- [#13450](https://github.com/gradio-app/gradio/pull/13450) [`dba4a16`](https://github.com/gradio-app/gradio/commit/dba4a168ce00c15497fd2b99a3364ebbb4842b72) - preserve head script execution order.  Thanks @hysts!
+
+## 0.12.4
+
+### Features
+
+- [#13367](https://github.com/gradio-app/gradio/pull/13367) [`5d9c9fe`](https://github.com/gradio-app/gradio/commit/5d9c9fe5ff32951309765d37da610a4833b4b694) - fix: upgrade handlebars to 4.7.9 (CVE-2026-33937).  Thanks @orbisai0security!
+
+### Dependency updates
+
+- @gradio/client@2.2.1
+
+## 0.12.3
+
+### Dependency updates
+
+- @gradio/atoms@0.24.0
+- @gradio/statustracker@0.14.1
+
+## 0.12.2
+
+### Dependency updates
+
+- @gradio/atoms@0.23.1
+- @gradio/statustracker@0.14.0
+- @gradio/client@2.2.0
+
+## 0.12.1
+
+### Dependency updates
+
+- @gradio/utils@0.12.2
+- @gradio/atoms@0.23.0
+- @gradio/statustracker@0.13.1
+
+## 0.12.0
+
+### Features
+
+- [#12988](https://github.com/gradio-app/gradio/pull/12988) [`0b943a4`](https://github.com/gradio-app/gradio/commit/0b943a4fd0d7701203f1b79b70b5afed19ee8413) - Add `watch` function to gr.HTML js_on_load.  Thanks @aliabid94!
+- [#12990](https://github.com/gradio-app/gradio/pull/12990) [`b0b1dc3`](https://github.com/gradio-app/gradio/commit/b0b1dc3282389a64ef3e16edb98805911f97444c) - Custom libraries in head of gr.HTML.  Thanks @aliabid94!
+
+### Dependency updates
+
+- @gradio/utils@0.12.1
+- @gradio/statustracker@0.13.0
+
+## 0.11.1
+
+### Dependency updates
+
+- @gradio/statustracker@0.12.5
+- @gradio/utils@0.12.0
+- @gradio/atoms@0.22.2
+
+## 0.11.0
+
+### Features
+
+- [#12909](https://github.com/gradio-app/gradio/pull/12909) [`362fba6`](https://github.com/gradio-app/gradio/commit/362fba6cff820076006e4865a573d9e67370957f) - Allow uploading files from gr.HTML.  Thanks @aliabid94!
+
+## 0.10.0
+
+### Features
+
+- [#12929](https://github.com/gradio-app/gradio/pull/12929) [`978bc6e`](https://github.com/gradio-app/gradio/commit/978bc6ea5094aa11e10994cdd662c4c663a86a83) - Add server functions support to gr.HTML.  Thanks @aliabid94!
+- [#12917](https://github.com/gradio-app/gradio/pull/12917) [`a0fff5c`](https://github.com/gradio-app/gradio/commit/a0fff5cb0e4cc0f8cc3fff7b5fbe18a031c7cc27) - Add push_to_hub method to gr.HTML. Add a gallery to view notable custom HTML components.  Thanks @freddyaboulton!
+- [#12899](https://github.com/gradio-app/gradio/pull/12899) [`820eff0`](https://github.com/gradio-app/gradio/commit/820eff050232f2ce40813e98e3294930e142e1c1) - Add support for gr.HTML as a layout element.  Thanks @aliabid94!
+
+## 0.9.3
+
+### Dependency updates
+
+- @gradio/utils@0.11.3
+- @gradio/atoms@0.22.0
+- @gradio/statustracker@0.12.4
+
+## 0.9.2
+
+### Dependency updates
+
+- @gradio/atoms@0.21.0
+- @gradio/statustracker@0.12.3
+
+## 0.9.1
+
+### Fixes
+
+- [#12800](https://github.com/gradio-app/gradio/pull/12800) [`7a1c321`](https://github.com/gradio-app/gradio/commit/7a1c321b6546ba05a353488f5133e8262c4a8a39) - Bump svelte/kit for security reasons.  Thanks @freddyaboulton!
+- [#12796](https://github.com/gradio-app/gradio/pull/12796) [`c833708`](https://github.com/gradio-app/gradio/commit/c8337086e17528f4f262b5c838e285584deb521f) - Fix label in gr.HTML.  Thanks @hannahblair!
+- [#12596](https://github.com/gradio-app/gradio/pull/12596) [`5f654d7`](https://github.com/gradio-app/gradio/commit/5f654d74fb59ca7c1caf1d5965a768fac293c584) - Ensure HTML renders in gr.Chatbot.  Thanks @hannahblair!
+- [#12805](https://github.com/gradio-app/gradio/pull/12805) [`f4a14e7`](https://github.com/gradio-app/gradio/commit/f4a14e7287850c505a1a88d34db795074bb52b7c) - Restore padding param in gr.HTML.  Thanks @hannahblair!
+
+### Dependency updates
+
+- @gradio/statustracker@0.12.2
+- @gradio/atoms@0.20.1
+- @gradio/utils@0.11.2
+- @gradio/icons@0.15.1
+
 ## 0.9.0
 
 ### Dependency updates

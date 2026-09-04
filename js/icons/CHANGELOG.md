@@ -1,4 +1,21 @@
 # @gradio/icons
+
+## 0.16.0
+
+### Features
+
+- [#13566](https://github.com/gradio-app/gradio/pull/13566) [`79b9171`](https://github.com/gradio-app/gradio/commit/79b91718b5c972c174ed042d8b04443bc2274076) - Gallery Download All.  Thanks @dawoodkhan82!
+
+### Fixes
+
+- [#13597](https://github.com/gradio-app/gradio/pull/13597) [`7a595cb`](https://github.com/gradio-app/gradio/commit/7a595cb72d8a82151ee2231e86d20c91d0bb9062) - Fix ImageEditor brush texture resets.  Thanks @dawoodkhan82!
+
+## 0.15.1
+
+### Fixes
+
+- [#12800](https://github.com/gradio-app/gradio/pull/12800) [`7a1c321`](https://github.com/gradio-app/gradio/commit/7a1c321b6546ba05a353488f5133e8262c4a8a39) - Bump svelte/kit for security reasons.  Thanks @freddyaboulton!
+
 ## 0.15.0
 
 ### Features

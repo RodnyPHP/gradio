@@ -1,5 +1,23 @@
 # @gradio/theme
 
+## 0.7.0
+
+### Features
+
+- [#13329](https://github.com/gradio-app/gradio/pull/13329) [`7ac583a`](https://github.com/gradio-app/gradio/commit/7ac583a38a4c995d172033ff6e3700390201ff21) - Make builds go zoom zoom.  Thanks @pngwn!
+
+## 0.6.2
+
+### Fixes
+
+- [#13541](https://github.com/gradio-app/gradio/pull/13541) [`1d19f2b`](https://github.com/gradio-app/gradio/commit/1d19f2b21f6b12285089abc73468ac67b5b93e27) - Fix long unbroken text overflowing in the Markdown component.  Thanks @hysts!
+
+## 0.6.1
+
+### Fixes
+
+- [#12800](https://github.com/gradio-app/gradio/pull/12800) [`7a1c321`](https://github.com/gradio-app/gradio/commit/7a1c321b6546ba05a353488f5133e8262c4a8a39) - Bump svelte/kit for security reasons.  Thanks @freddyaboulton!
+
 ## 0.6.0
 
 ### Features

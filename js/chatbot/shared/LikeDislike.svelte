@@ -8,12 +8,28 @@
 	import FlagActive from "./FlagActive.svelte";
 	import type { I18nFormatter } from "js/core/src/gradio_helper";
 
-	export let i18n: I18nFormatter;
-	export let handle_action: (selected: string | null) => void;
-	export let feedback_options: string[];
-	export let selected: string | null = null;
-	$: extra_feedback = feedback_options.filter(
-		(option) => option !== "Like" && option !== "Dislike"
+	let {
+		i18n,
+		handle_action,
+		feedback_options,
+		selected: selected_prop = null
+	}: {
+		i18n: I18nFormatter;
+		handle_action: (selected: string | null) => void;
+		feedback_options: string[];
+		selected?: string | null;
+	} = $props();
+
+	let selected = $state(selected_prop);
+
+	$effect(() => {
+		selected = selected_prop;
+	});
+
+	let extra_feedback = $derived(
+		feedback_options.filter(
+			(option) => option !== "Like" && option !== "Dislike"
+		)
 	);
 
 	function toggleSelection(newSelection: string): void {
@@ -30,7 +46,7 @@
 			color={selected === "Dislike"
 				? "var(--color-accent)"
 				: "var(--block-label-text-color)"}
-			on:click={() => toggleSelection("Dislike")}
+			onclick={() => toggleSelection("Dislike")}
 		/>
 	{/if}
 	{#if feedback_options.includes("Like")}
@@ -40,7 +56,7 @@
 			color={selected === "Like"
 				? "var(--color-accent)"
 				: "var(--block-label-text-color)"}
-			on:click={() => toggleSelection("Like")}
+			onclick={() => toggleSelection("Like")}
 		/>
 	{/if}
 {/if}
@@ -59,7 +75,7 @@
 				<button
 					class="extra-feedback-option"
 					style:font-weight={selected === option ? "bold" : "normal"}
-					on:click={() => {
+					onclick={() => {
 						toggleSelection(option);
 						handle_action(selected ? selected : null);
 					}}>{option}</button

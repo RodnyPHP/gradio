@@ -1,4 +1,4 @@
-<script context="module" lang="ts">
+<script module lang="ts">
 	export { default as BaseDropdown } from "./shared/Dropdown.svelte";
 	export { default as BaseDropdownOptions } from "./shared/DropdownOptions.svelte";
 	export { default as BaseMultiselect } from "./shared/Multiselect.svelte";
@@ -15,6 +15,14 @@
 
 	let props = $props();
 	const gradio = new Gradio<DropdownEvents, DropdownProps>(props);
+
+	// Translate the display side only; values stay raw for event payloads.
+	let translated_choices = $derived(
+		gradio.props.choices.map(
+			([display, value]) =>
+				[gradio.live_i18n(display), value] as [string, string | number]
+		)
+	);
 </script>
 
 <Block
@@ -30,7 +38,8 @@
 		autoscroll={gradio.shared.autoscroll}
 		i18n={gradio.i18n}
 		{...gradio.shared.loading_status}
-		on_clear_status={() => gradio.dispatch("clear_status", loading_status)}
+		on_clear_status={() =>
+			gradio.dispatch("clear_status", gradio.shared.loading_status)}
 	/>
 
 	{#if gradio.props.multiselect}
@@ -39,8 +48,8 @@
 		<Dropdown
 			label={gradio.shared.label}
 			info={gradio.props.info}
-			bind:value={gradio.props.value}
-			choices={gradio.props.choices}
+			bind:value={gradio.props.value as string | number | null}
+			choices={translated_choices}
 			interactive={gradio.shared.interactive}
 			show_label={gradio.shared.show_label}
 			container={gradio.shared.container}

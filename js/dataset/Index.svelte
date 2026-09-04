@@ -9,6 +9,7 @@
 	let props = $props();
 
 	const gradio = new Gradio<DatasetEvents, DatasetProps>(props);
+	gradio.watch_for_change();
 
 	// Need to mark samples as state, otherwise get_component_meta constantly triggers
 	let samples = $derived(gradio.props.samples ?? []);
@@ -47,13 +48,14 @@
 
 	<Dataset
 		onclick={(d) => (
-			(gradio.props.value = d.index),
-			gradio.dispatch("click", gradio.props.value)
+			(gradio.props.value = Array.isArray(d.index) ? d.index[0] : d.index),
+			gradio.dispatch("click")
 		)}
 		onselect={(data) => gradio.dispatch("select", data)}
 		load_component={gradio.shared.load_component}
-		{samples}
 		{...gradio.props}
+		root={gradio.shared.root}
+		{samples}
 	/>
 </Block>
 

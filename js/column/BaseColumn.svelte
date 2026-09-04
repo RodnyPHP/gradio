@@ -1,9 +1,24 @@
 <script lang="ts">
+	import type { Snippet } from "svelte";
 	import { StatusTracker } from "@gradio/statustracker";
-	import type { LoadingStatus } from "@gradio/statustracker";
+	import type { ILoadingStatus as LoadingStatus } from "@gradio/statustracker";
 
-	let props = $props();
-	let el;
+	type Props = {
+		children?: Snippet;
+		scale?: number | null;
+		min_width?: number | null;
+		elem_id?: string;
+		elem_classes?: string[];
+		visible?: boolean | "hidden";
+		variant?: "default" | "panel" | "compact";
+		loading_status?: LoadingStatus;
+		show_progress?: boolean;
+		autoscroll?: boolean;
+		i18n?: (key: string) => string;
+	};
+
+	let props: Props = $props();
+	let el: HTMLDivElement | undefined = $state();
 
 	let scale: number | null = $derived(props.scale ?? null);
 	let min_width: number = $derived(props.min_width ?? 0);
@@ -31,9 +46,10 @@
 >
 	{#if loading_status && loading_status.show_progress}
 		<StatusTracker
-			autoscroll={props.autoscroll}
-			i18n={props.i18n}
+			autoscroll={props.autoscroll ?? false}
+			i18n={props.i18n ?? ((key: string) => key)}
 			{...loading_status}
+			queue_size={loading_status.queue_size ?? null}
 			status={loading_status
 				? loading_status.status == "pending"
 					? "generating"
@@ -41,7 +57,7 @@
 				: null}
 		/>
 	{/if}
-	<slot />
+	{@render props.children?.()}
 </div>
 
 <style>

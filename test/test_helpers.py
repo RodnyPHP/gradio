@@ -3,6 +3,7 @@ import os
 import tempfile
 import time
 from pathlib import Path
+from typing import cast
 from unittest.mock import patch
 
 import gradio_client as grc
@@ -13,7 +14,7 @@ from starlette.testclient import TestClient
 from tqdm import tqdm
 
 import gradio as gr
-from gradio import helpers, utils
+from gradio import helpers, oauth, routes, utils
 from gradio.media import get_audio, get_image
 from gradio.route_utils import API_PREFIX
 
@@ -235,6 +236,18 @@ class TestProcessExamples:
         with connect(io):
             prediction = io.examples_handler.load_from_cache(1)
         assert prediction[0] == "Hello Dunya"
+
+    def test_caching_negative_number(self, patched_cache_folder, connect):
+        io = gr.Interface(
+            lambda x: -0.5678,
+            "text",
+            gr.Number(),
+            examples=[["hi"]],
+            cache_examples=True,
+        )
+        with connect(io):
+            prediction = io.examples_handler.load_from_cache(0)
+        assert prediction[0] == -0.5678
 
     def test_example_caching_relaunch(self, patched_cache_folder, connect):
         def combine(a, b):
@@ -952,6 +965,74 @@ def test_request_session_none_without_sessionmiddleware():
         request=Request(scope={"type": "http"}),  # type: ignore
     )
     assert inputs == [5, None]
+
+
+def test_expired_oauth_token_is_not_injected():
+    def foo(token: gr.OAuthToken | None):
+        return token
+
+    session = {"oauth_info": _oauth_info(expires_at=time.time() - 60)}
+
+    inputs, *_ = helpers.special_args(foo, inputs=[], request=_oauth_request(session))
+
+    assert inputs == [None]
+
+
+def test_expired_required_oauth_profile_raises():
+    def foo(profile: gr.OAuthProfile):
+        return profile
+
+    session = {"oauth_info": _oauth_info(expires_at=time.time() - 60)}
+
+    with pytest.raises(gr.Error, match="requires a logged in user"):
+        helpers.special_args(foo, inputs=[], request=_oauth_request(session))
+
+
+def test_valid_oauth_session_is_injected():
+    def foo(profile: gr.OAuthProfile, token: gr.OAuthToken):
+        return profile, token
+
+    session = {"oauth_info": _oauth_info(expires_at=time.time() + 60)}
+
+    inputs, *_ = helpers.special_args(foo, inputs=[], request=_oauth_request(session))
+
+    assert inputs[0].username == "test-user"
+    assert inputs[1].token == "test-token"
+    assert "oauth_info" in session
+
+
+def test_get_valid_oauth_info_removes_expired_session_entry():
+    expired = {"oauth_info": _oauth_info(expires_at=time.time() - 60)}
+    assert oauth._get_valid_oauth_info_from_session(expired) is None
+    assert "oauth_info" not in expired
+
+    valid = {"oauth_info": _oauth_info(expires_at=time.time() + 60)}
+    assert oauth._get_valid_oauth_info_from_session(valid) is not None
+    assert "oauth_info" in valid
+
+
+class _OAuthRequest:
+    def __init__(self, session):
+        self.session = session
+
+
+def _oauth_request(session):
+    return cast(routes.Request, _OAuthRequest(session))
+
+
+def _oauth_info(expires_at):
+    return {
+        "access_token": "test-token",
+        "expires_at": expires_at,
+        "scope": "openid profile",
+        "userinfo": {
+            "name": "Test User",
+            "preferred_username": "test-user",
+            "profile": "https://huggingface.co/test-user",
+            "picture": "https://huggingface.co/front/assets/huggingface_logo.svg",
+            "sub": "test-user",
+        },
+    }
 
 
 def test_examples_no_cache_optional_inputs():

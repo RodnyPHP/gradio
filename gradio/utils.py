@@ -1,9 +1,8 @@
-"""Handy utility functions."""
-
-from __future__ import annotations
+"""Utility helpers shared across Gradio."""
 
 import asyncio
 import copy
+import dataclasses
 import functools
 import hashlib
 import importlib
@@ -96,6 +95,7 @@ BUILT_IN_THEMES: dict[str, Theme] = {  # type: ignore
         themes.Origin(),
         themes.Citrus(),
         themes.Ocean(),
+        themes.Mario(),
     ]
 }
 
@@ -152,7 +152,7 @@ NO_RELOAD = DynamicBoolean(True)
 class BaseReloader(ABC):
     @property
     @abstractmethod
-    def running_app(self) -> App:
+    def running_app(self) -> "App":
         pass
 
     def get_attribute(self, attr: str, demo) -> Any:
@@ -166,7 +166,7 @@ class BaseReloader(ABC):
         else:
             return getattr(self.running_app.blocks, attr)
 
-    def swap_blocks(self, demo: Blocks):
+    def swap_blocks(self, demo: "Blocks"):
         assert self.running_app.blocks  # noqa: S101
         # Copy over the blocks to get new components and events but
         # not a new queue
@@ -174,6 +174,10 @@ class BaseReloader(ABC):
         demo.has_launched = True
         demo.max_file_size = self.running_app.blocks.max_file_size
         demo.is_running = True
+        # Carry over streaming state so that generators that were running
+        # when the app was reloaded continue to send diffs, not full values
+        demo.pending_streams = self.running_app.blocks.pending_streams
+        demo.pending_diff_streams = self.running_app.blocks.pending_diff_streams
         demo.allowed_paths = self.running_app.blocks.allowed_paths
         demo.blocked_paths = self.running_app.blocks.blocked_paths
 
@@ -183,11 +187,13 @@ class BaseReloader(ABC):
         demo.js = self.get_attribute("js", demo)
         demo.head = self.get_attribute("head", demo)
         demo.head_paths = self.get_attribute("head_paths", demo)
+        demo.server = self.get_attribute("server", demo)
         demo._set_html_css_theme_variables()
         self.running_app.state_holder.set_blocks(demo)
         for session in self.running_app.state_holder.session_data.values():
             session.blocks_config = copy.copy(demo.default_config)
         self.running_app.blocks = demo
+        reassign_pending_event_fns(demo)
 
 
 class ServerReloader(BaseReloader):
@@ -222,7 +228,7 @@ class ServerReloader(BaseReloader):
 class SpacesReloader(ServerReloader):
     def __init__(
         self,
-        app: App,
+        app: "App",
         watch_dirs: list[str],
         watch_module: ModuleType,
         stop_event: threading.Event,
@@ -238,7 +244,7 @@ class SpacesReloader(ServerReloader):
         self._stop_event = stop_event
 
     @property
-    def running_app(self) -> App:
+    def running_app(self) -> "App":
         return self.app
 
     @property
@@ -254,16 +260,18 @@ class SpacesReloader(ServerReloader):
         demo = getattr(self.watch_module, self.demo_name)
         if demo is not self.running_app.blocks:
             self.swap_blocks(demo)
-            # TODO: re-assign keys?
-            # TODO: re-assign config?
             return True
         return False
+
+    def swap_blocks(self, demo: "Blocks"):
+        super().swap_blocks(demo)
+        demo.config = demo.get_config_file()
 
 
 class SourceFileReloader(ServerReloader):
     def __init__(
         self,
-        app: App,
+        app: "App",
         watch_dirs: list[str],
         watch_module_name: str,
         demo_file: str,
@@ -284,7 +292,7 @@ class SourceFileReloader(ServerReloader):
         self.encoding = encoding
 
     @property
-    def running_app(self) -> App:
+    def running_app(self) -> "App":
         return self.app
 
     @property
@@ -298,7 +306,7 @@ class SourceFileReloader(ServerReloader):
         self.app.change_type = change_type
         self.app.change_count += 1
 
-    def swap_blocks(self, demo: Blocks):
+    def swap_blocks(self, demo: "Blocks"):
         old_blocks = self.running_app.blocks
         super().swap_blocks(demo)
         if old_blocks:
@@ -401,6 +409,16 @@ def watchfn(reloader: SourceFileReloader) -> None:
 
     Context.id = 0
     exec(no_reload_source_code, module.__dict__)
+    # After re-executing the module, ensure Context.id is higher than all
+    # existing block IDs. When child modules (e.g., pages in a multi-page app)
+    # are already imported and not re-executed, their blocks retain their
+    # original IDs. Without this adjustment, dynamically created blocks
+    # (e.g., from gr.render) may receive IDs that collide with existing blocks,
+    # causing DuplicateBlockError.
+    # See https://github.com/gradio-app/gradio/issues/12078
+    demo = getattr(module, reloader.demo_name, None)
+    if demo is not None and hasattr(demo, "blocks") and demo.blocks:
+        Context.id = max(Context.id, max(demo.blocks.keys()) + 1)
     sys.modules[reloader.watch_module_name] = module
 
     while reloader.should_watch():
@@ -470,7 +488,39 @@ def deep_equal(a: Any, b: Any) -> bool:
             return False
 
 
-def reassign_keys(old_blocks: Blocks, new_blocks: Blocks):
+def reassign_pending_event_fns(new_blocks: "Blocks"):
+    """
+    Points pending and in-progress queue events at the corresponding BlockFunction
+    objects of the newly-loaded app (matched by api_name) so that events that were
+    running when the app was hot-reloaded continue to work against the new config.
+    See https://github.com/gradio-app/gradio/issues/8712.
+    """
+    queue = new_blocks._queue
+    if queue is None:
+        return
+    new_fns_by_api_name = {
+        fn.api_name: fn
+        for fn in new_blocks.default_config.fns.values()
+        if fn.api_name is not None
+    }
+
+    def all_events():
+        # Snapshot each collection: reload runs on a watcher thread while the
+        # server's event loop mutates these queue structures concurrently.
+        for job in list(queue.active_jobs):
+            if job:
+                yield from job
+        for event_queue in list(queue.event_queue_per_concurrency_id.values()):
+            yield from list(event_queue.queue)
+        yield from list(queue.event_ids_to_events.values())
+
+    for event in all_events():
+        new_fn = new_fns_by_api_name.get(event.fn.api_name)
+        if new_fn is not None and new_fn.connection == event.fn.connection:
+            event.fn = new_fn
+
+
+def reassign_keys(old_blocks: "Blocks", new_blocks: "Blocks"):
     from gradio.blocks import Block, BlockContext
 
     new_keys = [
@@ -512,7 +562,7 @@ def colab_check() -> bool:
     """
     is_colab = False
     try:  # Check if running interactively using ipython.
-        from IPython.core.getipython import get_ipython
+        from IPython.core.getipython import get_ipython  # ty: ignore[unresolved-import]
 
         from_ipynb = get_ipython()
         if "google.colab" in str(from_ipynb):
@@ -539,7 +589,7 @@ def ipython_check() -> bool:
     """
     is_ipython = False
     try:  # Check if running interactively using ipython.
-        from IPython.core.getipython import get_ipython
+        from IPython.core.getipython import get_ipython  # ty: ignore[unresolved-import]
 
         if get_ipython() is not None:
             is_ipython = True
@@ -736,7 +786,7 @@ def resolve_singleton(_list: list[Any] | Any) -> Any:
         return _list
 
 
-def get_all_components() -> list[type[Component] | type[BlockContext]]:
+def get_all_components() -> "list[type[Component] | type[BlockContext]]":
     import gradio as gr
 
     classes_to_check = (
@@ -744,9 +794,13 @@ def get_all_components() -> list[type[Component] | type[BlockContext]]:
         + gr.blocks.BlockContext.__subclasses__()  # type: ignore
     )
     subclasses = []
+    seen = set()
 
     while classes_to_check:
         subclass = classes_to_check.pop()
+        if subclass in seen:
+            continue
+        seen.add(subclass)
         classes_to_check.extend(subclass.__subclasses__())
         subclasses.append(subclass)
     return [
@@ -758,6 +812,7 @@ def get_all_components() -> list[type[Component] | type[BlockContext]]:
             "Interface",
             "Blocks",
             "TabbedInterface",
+            "Workflow",
             "NativePlot",
             "SketchBox",
         ]
@@ -772,7 +827,7 @@ def core_gradio_components():
     ]
 
 
-def component_or_layout_class(cls_name: str) -> type[Component] | type[BlockContext]:
+def component_or_layout_class(cls_name: str) -> "type[Component] | type[BlockContext]":
     """
     Returns the component, template, or layout class with the given class name, or
     raises a ValueError if not found.
@@ -853,8 +908,17 @@ class SyncToAsyncIterator:
             run_sync_iterator_async, self.iterator, limiter=self.limiter
         )
 
-    def aclose(self):
-        self.iterator.close()
+    async def aclose(self, timeout=60.0, retry_interval=0.05):
+        start = time.monotonic()
+        while True:
+            try:
+                self.iterator.close()
+                break
+            except ValueError as e:
+                if "already executing" in str(e) and time.monotonic() - start < timeout:
+                    await asyncio.sleep(retry_interval)
+                else:
+                    raise
 
 
 async def async_iteration(iterator):
@@ -931,6 +995,21 @@ def sanitize_list_for_csv(values: list[Any]) -> list[Any]:
             sanitized_value = sanitize_value_for_csv(value)
             sanitized_values.append(sanitized_value)
     return sanitized_values
+
+
+def parse_escaped_json(payload: Any) -> Any:
+    """
+    Parses a JSON value read back from a flagging or example-cache CSV file,
+    tolerating the CSV-injection escape character ("'") that
+    sanitize_value_for_csv() prepends to values starting with "-", such as
+    negative numbers (see issue #13591).
+    """
+    try:
+        return json.loads(payload)
+    except json.JSONDecodeError:
+        if isinstance(payload, str) and payload.startswith("'"):
+            return json.loads(payload[1:])
+        raise
 
 
 def append_unique_suffix(name: str, list_of_names: list[str]):
@@ -1043,11 +1122,11 @@ def function_wrapper(
 
 def get_function_with_locals(
     fn: Callable,
-    blocks: Blocks,
+    blocks: "Blocks",
     event_id: str | None,
     in_event_listener: bool,
-    request: Request | None,
-    state: SessionState | None,
+    request: "Request | None",
+    state: "SessionState | None",
 ):
     def before_fn(blocks, event_id):
         from gradio.context import LocalContext
@@ -1117,7 +1196,10 @@ def get_type_hints(fn):
         fn = fn.__call__
     else:
         return {}
-    return typing.get_type_hints(fn)
+    try:
+        return typing.get_type_hints(fn)
+    except (NameError, TypeError):
+        return {}
 
 
 def is_special_typed_parameter(name, parameter_types):
@@ -1141,6 +1223,31 @@ def is_special_typed_parameter(name, parameter_types):
     )
     is_event_data = inspect.isclass(hint) and issubclass(hint, EventData)
     return is_request or is_event_data or is_oauth_arg
+
+
+def oauth_token_requirement(
+    fn: Callable | None,
+) -> Literal["required", "optional"] | None:
+    """Returns "required" for `gr.OAuthToken`, "optional" for `gr.OAuthToken | None`,
+    and None when `fn` never receives one."""
+    from gradio.oauth import OAuthToken
+
+    if fn is None:
+        return None
+    hints = get_type_hints(fn) or getattr(fn, "__annotations__", {}) or {}
+    try:
+        parameters = inspect.signature(fn).parameters
+    except (TypeError, ValueError):
+        return None
+    # Iterate over parameters, not hints, which also holds the return annotation.
+    for name in parameters:
+        hint = hints.get(name)
+        if hint is OAuthToken:
+            return "required"
+        # `Optional[X]` and PEP 604 `X | None` compare equal, so this covers both.
+        if hint == Optional[OAuthToken]:
+            return "optional"
+    return None
 
 
 def check_function_inputs_match(fn: Callable, inputs: Sequence, inputs_as_dict: bool):
@@ -1570,15 +1677,52 @@ def _parse_file_size(size: str | int | None) -> int | None:
     return multiple * size_int
 
 
-def connect_heartbeat(config: BlocksConfigDict, blocks) -> bool:
+def get_heartbeat_rate() -> float:
+    """
+    The interval, in seconds, between heartbeats sent to keep a client session
+    alive (and, on disconnect, to trigger unload events and session cleanup).
+
+    Configurable via the GRADIO_HEARTBEAT_INTERVAL environment variable (a
+    positive number of seconds). A shorter interval is useful in environments
+    such as Kubernetes, where the default 15 seconds can delay the detection of
+    client disconnections. If the variable is unset, non-numeric, or not
+    positive, falls back to 0.25 seconds during end-to-end tests and 15 seconds
+    otherwise.
+    """
+    interval = os.getenv("GRADIO_HEARTBEAT_INTERVAL")
+    if interval:
+        try:
+            rate = float(interval)
+        except ValueError:
+            warnings.warn(
+                f"Invalid GRADIO_HEARTBEAT_INTERVAL value: {interval!r}. "
+                "Expected a number of seconds; falling back to the default.",
+                UserWarning,
+            )
+        else:
+            if rate > 0:
+                return rate
+            # A non-positive interval would make asyncio.sleep() return
+            # immediately, turning the heartbeat into a tight loop.
+            warnings.warn(
+                f"Ignoring non-positive GRADIO_HEARTBEAT_INTERVAL value: {interval!r}. "
+                "Expected a positive number of seconds; falling back to the default.",
+                UserWarning,
+            )
+    return 0.25 if os.getenv("GRADIO_IS_E2E_TEST") else 15
+
+
+def connect_heartbeat(config: BlocksConfigDict, blocks, fns=None) -> bool:
     """
     Determines whether a heartbeat is required for a given config.
     """
+    from gradio.caching import Cache
     from gradio.components import State
 
     any_state = any(isinstance(block, State) for block in blocks)
     any_unload = False
     any_stream = False
+    any_per_session_cache = False
 
     if "dependencies" not in config:
         raise ValueError(
@@ -1589,13 +1733,34 @@ def connect_heartbeat(config: BlocksConfigDict, blocks) -> bool:
     for dep in config["dependencies"]:
         for target in dep["targets"]:
             if isinstance(target, (list, tuple)) and len(target) == 2:
-                any_unload = target[1] == "unload"
-                if any_unload:
-                    break
-                any_stream = target[1] == "stream"
-                if any_stream:
-                    break
-    return any_state or any_unload or any_stream
+                if target[1] == "unload":
+                    any_unload = True
+                elif target[1] == "stream":
+                    any_stream = True
+        if any_unload and any_stream:
+            break
+
+    if fns is not None:
+        for block_fn in fns:
+            fn = getattr(block_fn, "fn", None)
+            if fn is None:
+                continue
+            cache_store = getattr(fn, "cache", None)
+            if getattr(cache_store, "_per_session", False):
+                any_per_session_cache = True
+                break
+            try:
+                signature = inspect.signature(fn)
+            except (TypeError, ValueError):
+                continue
+            if any(
+                isinstance(param.default, Cache) and param.default._store._per_session
+                for param in signature.parameters.values()
+            ):
+                any_per_session_cache = True
+                break
+
+    return any_state or any_unload or any_stream or any_per_session_cache
 
 
 def deep_hash(obj):
@@ -1690,6 +1855,7 @@ def safe_join(directory: DeveloperPath, path: UserProvidedPath) -> str:
     if (
         any(sep in filename for sep in _os_alt_seps)
         or os.path.isabs(filename)
+        or filename.startswith("/")
         or filename == ".."
         or filename.startswith("../")
     ):
@@ -1729,10 +1895,11 @@ def get_node_path():
         return which_node_path
 
     try:
-        # On Windows, try using 'where' command
+        # On Windows, try using 'where' command. Suppress stderr so a missing
+        # node does not print "INFO: Could not find files for the given pattern(s)."
         if sys.platform == "win32":
             windows_path = (
-                subprocess.check_output(["where", "node"])
+                subprocess.check_output(["where", "node"], stderr=subprocess.DEVNULL)
                 .decode()
                 .strip()
                 .split("\r\n")[0]
@@ -1746,7 +1913,11 @@ def get_node_path():
     try:
         # On Unix-like systems, try using 'which' command
         if sys.platform != "win32":
-            return subprocess.check_output(["which", "node"]).decode().strip()
+            return (
+                subprocess.check_output(["which", "node"], stderr=subprocess.DEVNULL)
+                .decode()
+                .strip()
+            )
     except (subprocess.CalledProcessError, FileNotFoundError):
         # Command failed, fall back to checking common install locations
         pass
@@ -1819,6 +1990,16 @@ def dict_factory(items):
         else:
             d[key] = value
     return d
+
+
+def shallow_asdict(obj) -> dict:
+    """
+    Like dataclasses.asdict, but without deep-copying the field values, which
+    fails for values such as bokeh figures.
+    """
+    return dict_factory(
+        [(f.name, getattr(obj, f.name)) for f in dataclasses.fields(obj)]
+    )
 
 
 def get_function_description(fn: Callable) -> tuple[str, dict[str, str], list[str]]:
@@ -1913,34 +2094,19 @@ def get_function_description(fn: Callable) -> tuple[str, dict[str, str], list[st
     return description, parameters, returns
 
 
-async def safe_aclose_iterator(iterator, timeout=60.0, retry_interval=0.05):
+async def safe_aclose_iterator(iterator):
     """
-    Safely close generators by calling the aclose method.
-    Sync generators are tricky because if you call `aclose` while the loop is running
-    then you get a ValueError and the generator will not shut down gracefully.
-    So the solution is to retry calling the aclose method until we succeed (with timeout).
+    Safely close an async iterator by calling its aclose method.
+    For SyncToAsyncIterator, the retry logic for "generator already executing"
+    is handled in SyncToAsyncIterator.aclose() itself.
     """
-    start = time.monotonic()
-    if isinstance(iterator, SyncToAsyncIterator):
-        while True:
-            try:
-                iterator.aclose()
-                break
-            except ValueError as e:
-                if "already executing" in str(e):
-                    if time.monotonic() - start > timeout:
-                        raise
-                    await asyncio.sleep(retry_interval)
-                else:
-                    raise
-    else:
-        iterator.aclose()
+    await iterator.aclose()
 
 
 def set_default_buttons(
-    buttons: Sequence[str | Button] | None = None,
+    buttons: "Sequence[str | Button] | None" = None,
     default_buttons: list[str] | None = None,
-) -> Sequence[str | Button]:
+) -> "Sequence[str | Button]":
     from gradio.components.button import Button
 
     if buttons is None:

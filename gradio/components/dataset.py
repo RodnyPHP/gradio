@@ -24,7 +24,7 @@ class Dataset(Component):
     However, it can also be used directly to display a dataset and let users select examples.
     """
 
-    EVENTS = [Events.click, Events.select]
+    EVENTS = [Events.change, Events.click, Events.select]
 
     def __init__(
         self,
@@ -148,7 +148,12 @@ class Dataset(Component):
         config["component_ids"] = []
 
         for component in self._components:
-            config["components"].append(component.get_block_name())
+            config["components"].append(
+                {
+                    "name": component.get_block_name(),
+                    "class_id": component.get_component_class_id(),
+                }
+            )
 
             config["component_ids"].append(component._id)
 

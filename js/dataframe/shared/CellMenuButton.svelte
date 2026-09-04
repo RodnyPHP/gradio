@@ -1,13 +1,20 @@
 <script lang="ts">
-	export let on_click: (event: MouseEvent) => void;
+	let {
+		on_click,
+		tab_index = undefined
+	}: {
+		on_click: (event: MouseEvent) => void;
+		tab_index?: number;
+	} = $props();
 </script>
 
 <button
 	aria-label="Open cell menu"
 	class="cell-menu-button"
 	aria-haspopup="menu"
-	on:click={on_click}
-	on:touchstart={(event) => {
+	tabindex={tab_index}
+	onclick={on_click}
+	ontouchstart={(event) => {
 		event.preventDefault();
 		const touch = event.touches[0];
 		const mouseEvent = new MouseEvent("click", {

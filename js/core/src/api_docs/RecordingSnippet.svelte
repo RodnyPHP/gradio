@@ -5,19 +5,34 @@
 	import { represent_value } from "./utils";
 	import { onMount, tick } from "svelte";
 
-	export let dependencies: Dependency[];
-	export let short_root: string;
-	export let root: string;
-	export let api_prefix = "";
-	export let current_language: "python" | "javascript" | "bash" | "mcp";
-	export let username: string | null;
+	let {
+		dependencies,
+		short_root,
+		root,
+		api_prefix = "",
+		current_language,
+		username,
+		api_calls = []
+	}: {
+		dependencies: Dependency[];
+		short_root: string;
+		root: string;
+		api_prefix?: string;
+		current_language:
+			| "python"
+			| "javascript"
+			| "bash"
+			| "skill"
+			| "mcp"
+			| "cli";
+		username: string | null;
+		api_calls?: Payload[];
+	} = $props();
 
-	let python_code: HTMLElement;
-	let python_code_text: string;
-	let js_code: HTMLElement;
-	let bash_code: HTMLElement;
-
-	export let api_calls: Payload[] = [];
+	let python_code: HTMLElement | undefined = $state();
+	let python_code_text = $state("");
+	let js_code: HTMLElement | undefined = $state();
+	let bash_code: HTMLElement | undefined = $state();
 
 	async function get_info(): Promise<{
 		named_endpoints: any;
@@ -31,9 +46,9 @@
 	}
 
 	let endpoints_info: any;
-	let py_zipped: { call: string; api_name: string }[] = [];
-	let js_zipped: { call: string; api_name: string }[] = [];
-	let bash_zipped: { call: string; api_name: string }[] = [];
+	let py_zipped: { call: string; api_name: string }[] = $state([]);
+	let js_zipped: { call: string; api_name: string }[] = $state([]);
+	let bash_zipped: { call: string; api_name: string }[] = $state([]);
 
 	function format_api_call(call: Payload, lang: "py" | "js" | "bash"): string {
 		const api_name = `/${dependencies[call.fn_index].api_name}`;
@@ -64,7 +79,7 @@
 							"js"
 						)}`;
 					} else if (lang === "bash") {
-						return `    ${represent_value(
+						return `    "${param_name}": ${represent_value(
 							param as string,
 							python_type,
 							"bash"
@@ -81,7 +96,7 @@
 			} else if (lang === "js") {
 				return `{\n${params},\n}`;
 			} else if (lang === "bash") {
-				return `\n${params}\n`;
+				return `{\n${params}\n}`;
 			}
 		}
 		if (lang === "py") {
@@ -120,7 +135,7 @@
 
 		await tick();
 
-		python_code_text = python_code.innerText;
+		python_code_text = python_code?.innerText ?? "";
 	});
 </script>
 
@@ -151,7 +166,7 @@ client.<span class="highlight"
 		{:else if current_language === "javascript"}
 			<code>
 				<div class="copy">
-					<CopyButton code={js_code?.innerText} />
+					<CopyButton code={js_code?.innerText ?? ""} />
 				</div>
 				<div bind:this={js_code}>
 					<pre>import &lbrace; Client &rbrace; from "@gradio/client";
@@ -170,12 +185,11 @@ await client.predict(<span
 		{:else if current_language === "bash"}
 			<code>
 				<div class="copy">
-					<CopyButton code={bash_code?.innerText} />
+					<CopyButton code={bash_code?.innerText ?? ""} />
 				</div>
 				<div bind:this={bash_code}>
 					{#each bash_zipped as { call, api_name }}
-						<pre>curl -X POST {short_root}call/{api_name} -s -H "Content-Type: application/json" -d '{"{"} 
-	"data": [{call}]{"}"}' \
+						<pre>curl -X POST {short_root}call/v2/{api_name} -s -H "Content-Type: application/json" -d '{call}' \
   | awk -F'"' '{"{"} print $4{"}"}' \
   | read EVENT_ID; curl -N {short_root}call/{api_name}/$EVENT_ID</pre>
 						<br />

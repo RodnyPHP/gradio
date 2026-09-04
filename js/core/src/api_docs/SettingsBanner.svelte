@@ -2,11 +2,8 @@
 	import { _ } from "svelte-i18n";
 	import settings_logo from "./img/settings-logo.svg";
 	import Clear from "./img/clear.svelte";
-	import { setupi18n } from "../i18n";
 
 	let { root, onclose }: { root: string; onclose?: () => void } = $props();
-
-	setupi18n();
 </script>
 
 <h2>
@@ -19,7 +16,7 @@
 	</div>
 </h2>
 
-<button on:click={() => onclose?.()}>
+<button onclick={() => onclose?.()}>
 	<Clear />
 </button>
 

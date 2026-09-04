@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from "svelte";
+	import { onMount, untrack } from "svelte";
 	import { Music } from "@gradio/icons";
 	import { format_time, type I18nFormatter } from "@gradio/utils";
 	import WaveSurfer from "wavesurfer.js";
@@ -8,78 +8,124 @@
 	import { Empty } from "@gradio/atoms";
 	import type { FileData } from "@gradio/client";
 	import type { WaveformOptions, SubtitleData } from "../shared/types";
-	import { createEventDispatcher } from "svelte";
 
 	import Hls from "hls.js";
 
-	export let value: null | FileData = null;
-	export let subtitles: null | string | SubtitleData[] = null;
-	$: url = value?.url;
-	export let label: string;
-	export let i18n: I18nFormatter;
-	export let dispatch_blob: (
-		blobs: Uint8Array[] | Blob[],
-		event: "stream" | "change" | "stop_recording"
-	) => Promise<void> = () => Promise.resolve();
-	export let interactive = false;
-	export let editable = true;
-	export let trim_region_settings = {};
-	export let waveform_settings: Record<string, any>;
-	export let waveform_options: WaveformOptions;
-	export let mode = "";
-	export let loop: boolean;
-	export let handle_reset_value: () => void = () => {};
-	export let playback_position = 0;
-	let old_playback_position = 0;
+	let {
+		value = null,
+		subtitles = null,
+		label,
+		i18n,
+		dispatch_blob = () => Promise.resolve(),
+		interactive = false,
+		editable = true,
+		trim_region_settings = {},
+		waveform_settings,
+		waveform_options,
+		mode = $bindable(),
+		loop,
+		handle_reset_value = () => {},
+		playback_position = $bindable(),
+		onstop,
+		onplay,
+		onpause,
+		onedit,
+		onload
+	}: {
+		value?: null | FileData;
+		subtitles?: null | string | SubtitleData[];
+		label: string;
+		i18n: I18nFormatter;
+		dispatch_blob?: (
+			blobs: Uint8Array[] | Blob[],
+			event: "stream" | "change"
+		) => Promise<void>;
+		interactive?: boolean;
+		editable?: boolean;
+		trim_region_settings?: Record<string, any>;
+		waveform_settings: Record<string, any>;
+		waveform_options: WaveformOptions;
+		mode?: string;
+		loop?: boolean;
+		handle_reset_value?: () => void;
+		playback_position?: number;
+		onstop?: () => void;
+		onplay?: () => void;
+		onpause?: () => void;
+		onedit?: () => void;
+		onload?: () => void;
+	} = $props();
 
-	let container: HTMLDivElement;
+	let url = $derived(value?.url);
+	let old_playback_position = $state(0);
+
+	let container = $state<HTMLDivElement | undefined>(undefined);
+	let waveform_container: HTMLDivElement | undefined = undefined;
 	let waveform: WaveSurfer | undefined;
-	let waveform_ready = false;
+	let waveform_ready = $state(false);
 	let waveform_component_wrapper: HTMLDivElement;
-	let playing = false;
+	let playing = $state(false);
 
 	let subtitle_container: HTMLDivElement;
 
 	let timeRef: HTMLTimeElement;
 	let durationRef: HTMLTimeElement;
-	let audio_duration: number;
+	let audio_duration = $state<number>(0);
 
-	let trimDuration = 0;
+	let trimDuration = $state(0);
 
-	let show_volume_slider = false;
-	let audio_player: HTMLAudioElement;
+	let show_volume_slider = $state(false);
+	let audio_player = $state<HTMLAudioElement | undefined>(undefined);
 
 	let stream_active = false;
-	let subtitles_toggle = true;
+	let subtitles_toggle = $state(true);
 	let subtitle_event_handlers: (() => void)[] = [];
 
-	const dispatch = createEventDispatcher<{
-		stop: undefined;
-		play: undefined;
-		pause: undefined;
-		edit: undefined;
-		end: undefined;
-		load: undefined;
-	}>();
+	let waveform_load_failed = $state(false);
 
-	$: use_waveform =
-		waveform_options.show_recording_waveform && !value?.is_stream;
+	let use_waveform = $derived(
+		waveform_options.show_recording_waveform && !value?.is_stream
+	);
 
-	$: if (
-		waveform_ready &&
-		old_playback_position !== playback_position &&
-		audio_duration
-	) {
-		waveform?.seekTo(playback_position / audio_duration);
-		old_playback_position = playback_position;
-	}
+	let native_fallback_active = $derived(
+		waveform_load_failed && value?.url !== undefined && value?.url !== null
+	);
+
+	// The native element is the player, rather than a hidden decoy, whenever
+	// there is no working waveform to drive playback: the waveform is turned
+	// off, the value is a stream, or the waveform failed to load. Its events
+	// are only meaningful in those cases.
+	let native_player_active = $derived(!use_waveform || native_fallback_active);
+
+	$effect(() => {
+		if (
+			playback_position !== undefined &&
+			old_playback_position !== playback_position
+		) {
+			if (native_player_active) {
+				if (audio_player) {
+					audio_player.currentTime = playback_position;
+					old_playback_position = playback_position;
+				}
+			} else if (waveform_ready && audio_duration) {
+				waveform?.seekTo(playback_position / audio_duration);
+				old_playback_position = playback_position;
+			}
+		}
+	});
 
 	const create_waveform = (): void => {
+		// `container` only exists while the waveform branch is rendered, and it is
+		// a fresh element every time that branch remounts, so bail out when there
+		// is nothing to draw into and rebuild when the element is replaced.
+		if (!container || waveform_container === container) return;
+		waveform?.destroy();
+		waveform_ready = false;
+		waveform_container = container;
 		waveform = WaveSurfer.create({
 			container: container,
 			...waveform_settings
 		});
-
 		if (subtitles && waveform) {
 			if (subtitles_toggle) {
 				add_subtitles_to_waveform(waveform, subtitles);
@@ -88,10 +134,9 @@
 			}
 		}
 
-		if (value?.url && waveform) {
-			waveform.load(value?.url);
-		}
-
+		waveform?.on("init", () => {
+			waveform_ready = true;
+		});
 		waveform?.on("decode", (duration: any) => {
 			audio_duration = duration;
 			durationRef && (durationRef.textContent = format_time(duration));
@@ -104,17 +149,18 @@
 				firstTimeUpdate = false;
 				return;
 			}
-			old_playback_position = playback_position = currentTime;
+			playback_position = currentTime;
+			old_playback_position = currentTime;
 		});
 
 		waveform?.on("interaction", () => {
 			const currentTime = waveform?.getCurrentTime() || 0;
 			timeRef && (timeRef.textContent = format_time(currentTime));
-			old_playback_position = playback_position = currentTime;
+			playback_position = currentTime;
+			old_playback_position = currentTime;
 		});
 
 		waveform?.on("ready", () => {
-			waveform_ready = true;
 			if (!waveform_settings.autoplay) {
 				waveform?.stop();
 			} else {
@@ -127,28 +173,43 @@
 				waveform?.play();
 			} else {
 				playing = false;
-				dispatch("stop");
+				onstop?.();
 			}
 		});
 		waveform?.on("pause", () => {
 			playing = false;
-			dispatch("pause");
+			onpause?.();
 		});
 		waveform?.on("play", () => {
 			playing = true;
-			dispatch("play");
+			onplay?.();
 		});
 
 		waveform?.on("load", () => {
-			dispatch("load");
+			onload?.();
 		});
+
+		waveform?.on("error", handle_waveform_error);
 	};
 
-	$: if (use_waveform && container !== undefined && container !== null) {
-		if (waveform !== undefined) waveform.destroy();
-		container.innerHTML = "";
-		create_waveform();
-		playing = false;
+	$effect(() => {
+		if (url && waveform_ready) {
+			untrack(() => {
+				if (value?.url && waveform) {
+					waveform_load_failed = false;
+					waveform.load(value.url).catch(handle_waveform_error);
+				}
+			});
+		}
+	});
+
+	function handle_waveform_error(e: Error): void {
+		if (e?.name === "AbortError" || waveform_load_failed) return;
+		console.error("Waveform load error:", e);
+		waveform_load_failed = true;
+		if (audio_player && value?.url) {
+			audio_player.src = value.url;
+		}
 	}
 
 	const handle_trim_audio = async (
@@ -157,18 +218,16 @@
 	): Promise<void> => {
 		mode = "";
 		const decodedData = waveform?.getDecodedData();
-		if (decodedData)
-			await process_audio(
+		if (decodedData) {
+			const trimmedBlob = await process_audio(
 				decodedData,
 				start,
 				end,
 				waveform_settings.sampleRate
-			).then(async (trimmedBlob: Uint8Array) => {
-				await dispatch_blob([trimmedBlob], "change");
-				waveform?.destroy();
-				container.innerHTML = "";
-			});
-		dispatch("edit");
+			);
+			await dispatch_blob([trimmedBlob], "change");
+		}
+		onedit?.();
 	};
 
 	async function load_audio(data: string): Promise<void> {
@@ -181,16 +240,18 @@
 		}
 	}
 
-	$: if (subtitles && waveform) {
-		if (subtitles_toggle) {
-			add_subtitles_to_waveform(waveform, subtitles);
-		} else {
-			hide_subtitles();
+	$effect(() => {
+		if (subtitles && waveform) {
+			if (subtitles_toggle) {
+				add_subtitles_to_waveform(waveform, subtitles);
+			} else {
+				hide_subtitles();
+			}
 		}
-	}
+	});
 
 	function load_stream(value: FileData | null): void {
-		if (!value || !value.is_stream || !value.url) return;
+		if (!value || !value.is_stream || !value.url || !audio_player) return;
 
 		if (Hls.isSupported() && !stream_active) {
 			// Set config to start playback after 1 second of data received
@@ -202,7 +263,7 @@
 			hls.loadSource(value.url);
 			hls.attachMedia(audio_player);
 			hls.on(Hls.Events.MANIFEST_PARSED, function () {
-				if (waveform_settings.autoplay) audio_player.play();
+				if (waveform_settings.autoplay) audio_player?.play();
 			});
 			hls.on(Hls.Events.ERROR, function (event, data) {
 				console.error("HLS error:", event, data);
@@ -233,16 +294,32 @@
 		}
 	}
 
-	$: if (audio_player && url) {
-		load_audio(url);
-	}
+	$effect(() => {
+		// Without a waveform there is nothing to become ready, so gating the load
+		// on `waveform_ready` left the native player with no source at all.
+		if (
+			audio_player &&
+			url &&
+			(waveform_ready || !waveform_options.show_recording_waveform)
+		) {
+			load_audio(url);
+		}
+	});
 
-	$: if (audio_player && value?.is_stream) {
-		load_stream(value);
-	}
+	$effect(() => {
+		if (audio_player && value?.is_stream) {
+			load_stream(value);
+		}
+	});
+
+	$effect(() => {
+		if (container) {
+			untrack(() => create_waveform());
+		}
+	});
 
 	onMount(() => {
-		window.addEventListener("keydown", (e) => {
+		const handleKeydown = (e: KeyboardEvent): void => {
 			if (!waveform || show_volume_slider) return;
 
 			const is_focused_in_waveform =
@@ -254,7 +331,13 @@
 			} else if (e.key === "ArrowLeft" && mode !== "edit") {
 				skip_audio(waveform, -0.1);
 			}
-		});
+		};
+		window.addEventListener("keydown", handleKeydown);
+
+		return () => {
+			waveform?.destroy();
+			window.removeEventListener("keydown", handleKeydown);
+		};
 	});
 
 	async function add_subtitles_to_waveform(
@@ -351,13 +434,35 @@
 
 <audio
 	class="standard-player"
-	class:hidden={use_waveform}
+	class:hidden={!native_player_active}
+	data-testid={label ? "audio-player-" + label : "unlabelled-audio-player"}
 	controls
 	autoplay={waveform_settings.autoplay}
-	on:load
+	{onload}
 	bind:this={audio_player}
-	on:ended={() => dispatch("stop")}
-	on:play={() => dispatch("play")}
+	onended={() => {
+		if (native_player_active) playing = false;
+		onstop?.();
+	}}
+	onplay={() => {
+		if (native_player_active) playing = true;
+		onplay?.();
+	}}
+	onpause={() => {
+		if (!native_player_active) return;
+		playing = false;
+		onpause?.();
+	}}
+	ontimeupdate={() => {
+		if (!native_player_active || !audio_player) return;
+		playback_position = audio_player.currentTime;
+		old_playback_position = audio_player.currentTime;
+	}}
+	onloadedmetadata={() => {
+		if (native_player_active && audio_player) {
+			audio_duration = audio_player.duration;
+		}
+	}}
 	preload="metadata"
 >
 </audio>
@@ -368,6 +473,7 @@
 {:else if use_waveform}
 	<div
 		class="component-wrapper"
+		class:hidden={native_fallback_active}
 		data-testid={label ? "waveform-" + label : "unlabelled-audio"}
 		bind:this={waveform_component_wrapper}
 	>
